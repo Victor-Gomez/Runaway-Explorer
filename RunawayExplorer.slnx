@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/RunawayExplorer.Core/RunawayExplorer.Core.csproj" />
+    <Project Path="src/RunawayExplorer/RunawayExplorer.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/RunawayExplorer.Core.Tests/RunawayExplorer.Core.Tests.csproj" />
+    <Project Path="tests/RunawayExplorer.Tests/RunawayExplorer.Tests.csproj" />
+  </Folder>
+</Solution>

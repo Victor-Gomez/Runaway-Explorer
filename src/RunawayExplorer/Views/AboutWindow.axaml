@@ -1,0 +1,102 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="RunawayExplorer.Views.AboutWindow"
+        Title="About Runaway Explorer"
+        WindowStartupLocation="CenterOwner"
+        SizeToContent="Height"
+        Width="540"
+        CanResize="False"
+        ShowInTaskbar="False"
+        Icon="avares://RunawayExplorer/Assets/RunawayExplorer.ico">
+
+    <Window.Resources>
+        <ResourceDictionary>
+            <!-- The Fluent theme uses one mid-blue (#0078D7) for links in both variants, and it clears
+                 4.5:1 contrast against neither background. Pin a per-variant pair that does. -->
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="HyperlinkButtonForeground" Color="#6CB6FF"/>
+                    <SolidColorBrush x:Key="HyperlinkButtonForegroundPointerOver" Color="#8FCBFF"/>
+                    <SolidColorBrush x:Key="HyperlinkButtonForegroundPressed" Color="#4E9BE0"/>
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="HyperlinkButtonForeground" Color="#0060B0"/>
+                    <SolidColorBrush x:Key="HyperlinkButtonForegroundPointerOver" Color="#00468A"/>
+                    <SolidColorBrush x:Key="HyperlinkButtonForegroundPressed" Color="#003666"/>
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <Window.Styles>
+        <Style Selector="TextBlock.section">
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,14,0,4"/>
+        </Style>
+        <Style Selector="TextBlock.label">
+            <Setter Property="Opacity" Value="0.7"/>
+            <Setter Property="Margin" Value="0,0,10,0"/>
+        </Style>
+        <Style Selector="SelectableTextBlock.value">
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="FontFamily" Value="Consolas,Menlo,monospace"/>
+            <Setter Property="FontSize" Value="11.5"/>
+        </Style>
+    </Window.Styles>
+
+    <DockPanel Margin="20">
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right"
+                    Spacing="8" Margin="0,18,0,0">
+            <Button Content="Copy Diagnostics" Click="CopyDiagnostics_Click" Padding="14,6"
+                    ToolTip.Tip="Copy the version and environment details above to the clipboard, for pasting into a bug report."/>
+            <Button Content="Check for Updates" Click="CheckUpdates_Click" x:Name="CheckUpdatesButton" Padding="14,6"/>
+            <Button Content="Close" Click="Close_Click" Padding="20,6" IsDefault="True"/>
+        </StackPanel>
+
+        <StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="14">
+                <Image Source="avares://RunawayExplorer/Assets/RunawayExplorer.png" Width="96" Height="96"
+                       VerticalAlignment="Top"/>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="Runaway Explorer" FontSize="20" FontWeight="Bold"/>
+                    <SelectableTextBlock x:Name="VersionText" Opacity="0.8" Margin="0,2,0,0"/>
+                    <TextBlock Text="An asset viewer for Runaway: A Road Adventure (Pendulo Studios, 2001)."
+                               Opacity="0.7" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                </StackPanel>
+            </StackPanel>
+
+            <TextBlock Classes="section" Text="Environment"/>
+            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto">
+                <TextBlock Grid.Row="0" Grid.Column="0" Classes="label" Text=".NET"/>
+                <SelectableTextBlock Grid.Row="0" Grid.Column="1" Classes="value" x:Name="RuntimeText"/>
+
+                <TextBlock Grid.Row="1" Grid.Column="0" Classes="label" Text="Avalonia"/>
+                <SelectableTextBlock Grid.Row="1" Grid.Column="1" Classes="value" x:Name="AvaloniaText"/>
+
+                <TextBlock Grid.Row="2" Grid.Column="0" Classes="label" Text="LibVLC"/>
+                <SelectableTextBlock Grid.Row="2" Grid.Column="1" Classes="value" x:Name="LibVlcText"
+                                     ToolTip.Tip="Backs sound and video playback, including the Bink videos. Bundled on Windows; install it from your distro's packages on Linux."/>
+
+                <TextBlock Grid.Row="3" Grid.Column="0" Classes="label" Text="Log"/>
+                <SelectableTextBlock Grid.Row="3" Grid.Column="1" Classes="value" x:Name="LogPathText"/>
+            </Grid>
+
+            <TextBlock Classes="section" Text="About the formats"/>
+            <TextBlock TextWrapping="Wrap" Opacity="0.85" LineHeight="18">
+                Every container and image codec here was reverse-engineered from the Steam release; there is
+                no official documentation. The scene archives hold three image formats -- raw RGB565 rasters,
+                positioned row-record overlays, and segment-encoded sprite animations -- and this viewer decodes
+                all three byte-exact. What is still unknown (the per-scene data tables, the RESOURCE.000 sprite
+                codec) is listed in docs/formats.<LineBreak/><LineBreak/>
+                <Run FontStyle="Italic">Runaway: A Road Adventure</Run> is a trademark of its respective owners.
+                This is an unaffiliated fan-made tool and ships no game data.
+            </TextBlock>
+
+            <StackPanel Orientation="Horizontal" Spacing="4" Margin="-8,10,0,0">
+                <HyperlinkButton Content="Project on GitHub" Click="OpenRepo_Click"/>
+                <HyperlinkButton Content="Report an Issue" Click="OpenIssues_Click"/>
+                <HyperlinkButton Content="Releases" Click="OpenReleases_Click"/>
+            </StackPanel>
+        </StackPanel>
+    </DockPanel>
+</Window>

@@ -1,0 +1,391 @@
+<Window x:Class="RunawayExplorer.MainWindow"
+        xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:RunawayExplorer"
+        xmlns:vm="clr-namespace:RunawayExplorer.ViewModels"
+        xmlns:views="clr-namespace:RunawayExplorer.Views"
+        xmlns:vlc="clr-namespace:LibVLCSharp.Avalonia;assembly=LibVLCSharp.Avalonia"
+        Title="Runaway Explorer" Height="720" Width="1180"
+        WindowStartupLocation="CenterScreen"
+        DragDrop.AllowDrop="True"
+        Icon="avares://RunawayExplorer/Assets/RunawayExplorer.ico">
+
+    <Window.DataTemplates>
+        <TreeDataTemplate DataType="vm:FsNodeViewModel" ItemsSource="{Binding Children}">
+            <StackPanel Orientation="Horizontal">
+                <Image Source="{Binding IconSource}" Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                <TextBlock Text="{Binding DisplayName}" VerticalAlignment="Center"
+                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+            </StackPanel>
+        </TreeDataTemplate>
+    </Window.DataTemplates>
+
+    <Window.Resources>
+        <!-- Order matters: the TreeViewItem style below references this ContextMenu via StaticResource,
+             which resolves at parse time. Entries are shown/hidden per right-clicked node in
+             TreeContextMenu_Opening; see TreeContextActions for the rules. -->
+        <ContextMenu x:Key="TreeItemContextMenu" Opening="TreeContextMenu_Opening">
+            <MenuItem x:Name="TreeMenuCopyPath" Header="_Copy Path" Click="TreeContextCopyPath_Click"/>
+            <MenuItem x:Name="TreeMenuReveal" Header="_Reveal in Explorer" Click="TreeContextRevealInExplorer_Click"
+                      ToolTip.Tip="Show the archive or file on disk."/>
+            <Separator x:Name="TreeMenuExportSeparator"/>
+            <MenuItem x:Name="TreeMenuExportItem" Header="_Export This Item..." Click="TreeContextExportItem_Click"
+                      ToolTip.Tip="Export the decoded entry (images to PNG, animations to APNG, sounds to WAV, videos to BIK)."/>
+            <MenuItem x:Name="TreeMenuExportRaw" Header="Export Ra_w..." Click="TreeContextExportRaw_Click"
+                      ToolTip.Tip="Write the entry's bytes verbatim, as stored in the archive."/>
+            <MenuItem x:Name="TreeMenuBatchExport" Header="_Batch Export This Folder..." Click="TreeContextBatchExport_Click"
+                      ToolTip.Tip="Recursively export every recognised entry under this folder."/>
+        </ContextMenu>
+
+        <!-- Preview canvas menu. Entries are shown/hidden per loaded resource in PreviewContextMenu_Opening. -->
+        <ContextMenu x:Key="PreviewContextMenu" Opening="PreviewContextMenu_Opening">
+            <MenuItem x:Name="PreviewMenuZoomIn" Header="Zoom _In" Click="PreviewZoomIn_Click" InputGesture="Ctrl+OemPlus"/>
+            <MenuItem x:Name="PreviewMenuZoomOut" Header="Zoom _Out" Click="PreviewZoomOut_Click" InputGesture="Ctrl+OemMinus"/>
+            <MenuItem x:Name="PreviewMenuFit" Header="_Fit to Window" Click="PreviewResetZoom_Click" InputGesture="Ctrl+D0"/>
+            <MenuItem x:Name="PreviewMenuCopySelection" Header="_Copy Selection" Click="PreviewCopySelection_Click"/>
+            <MenuItem x:Name="PreviewMenuCopyText" Header="Copy _All Text" Click="PreviewCopyAllText_Click"/>
+            <MenuItem x:Name="PreviewMenuOpenExternal" Header="Open in _External Player" Click="OpenExternalButton_Click"/>
+            <Separator x:Name="PreviewMenuViewSeparator"/>
+            <MenuItem x:Name="PreviewMenuExport" Header="_Export..." Click="Export_Click" InputGesture="Ctrl+E"/>
+            <MenuItem x:Name="PreviewMenuExportRaw" Header="Export Ra_w..." Click="ExportRaw_Click"/>
+            <Separator x:Name="PreviewMenuPathSeparator"/>
+            <MenuItem x:Name="PreviewMenuCopyPath" Header="Copy _Path" Click="PreviewCopyPath_Click"/>
+            <MenuItem x:Name="PreviewMenuReveal" Header="Reveal in Explore_r" Click="PreviewReveal_Click"/>
+        </ContextMenu>
+    </Window.Resources>
+
+    <Window.Styles>
+        <Style Selector="TreeViewItem">
+            <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
+            <Setter Property="ContextMenu" Value="{StaticResource TreeItemContextMenu}"/>
+        </Style>
+        <!-- Icon-only toolbar buttons used by the zoom strips and transports. -->
+        <Style Selector="Button.tool">
+            <Setter Property="Width" Value="28"/>
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+        </Style>
+        <Style Selector="ToggleButton.pill">
+            <Setter Property="Padding" Value="8,2"/>
+            <Setter Property="Margin" Value="0,0,10,0"/>
+        </Style>
+    </Window.Styles>
+
+    <Grid>
+    <DockPanel>
+        <Menu DockPanel.Dock="Top">
+            <MenuItem Header="_File">
+                <MenuItem Header="_Select Runaway Install Folder..." Click="SelectFolder_Click" InputGesture="Ctrl+O"/>
+                <MenuItem x:Name="RecentInstallsMenu" Header="Open _Recent"/>
+                <MenuItem Header="_Export..." Click="Export_Click" InputGesture="Ctrl+E"/>
+                <MenuItem Header="Export _Raw..." Click="ExportRaw_Click"/>
+                <MenuItem Header="_Batch Export Folder..." Click="BatchExport_Click"
+                          ToolTip.Tip="Recursively export every recognised entry under the selected folder into a chosen output directory."/>
+                <Separator/>
+                <MenuItem Header="E_xit" Click="Exit_Click"/>
+            </MenuItem>
+            <MenuItem Header="_Options">
+                <MenuItem x:Name="AutoPlaySoundMenuItem" Header="_Auto-play Sound" ToggleType="CheckBox" Click="AutoPlaySound_Click"/>
+                <MenuItem x:Name="AutoPlayVideoMenuItem" Header="Auto-play _Video" ToggleType="CheckBox" Click="AutoPlayVideo_Click"/>
+                <MenuItem x:Name="LoopSoundMenuItem" Header="Loop _Sound Playback" ToggleType="CheckBox" Click="LoopSound_Click"/>
+                <MenuItem x:Name="ShowOnBackgroundMenuItem" Header="Show on Scene _Background" ToggleType="CheckBox" Click="ShowOnBackground_Click"
+                          ToolTip.Tip="Draw overlays and animation frames on their scene's background, at their real screen position (B)."/>
+                <Separator/>
+                <MenuItem Header="_Settings..." Click="OpenSettings_Click" InputGesture="Ctrl+OemComma"/>
+            </MenuItem>
+            <MenuItem Header="_Help">
+                <MenuItem Header="_Check for Updates..." Click="CheckForUpdates_Click"
+                          ToolTip.Tip="Ask GitHub whether a newer release exists. Nothing is downloaded or installed automatically."/>
+                <MenuItem Header="_Keyboard Shortcuts" Click="Shortcuts_Click" InputGesture="F1"/>
+                <MenuItem Header="Open _Log File" Click="OpenLogFile_Click"/>
+                <Separator/>
+                <MenuItem Header="_About Runaway Explorer..." Click="About_Click"/>
+            </MenuItem>
+        </Menu>
+
+        <!-- Startup update notice. A strip rather than a modal so it never blocks the tree. -->
+        <Border x:Name="UpdateBanner" DockPanel.Dock="Top" IsVisible="False"
+                Padding="10,6" Background="#332F81F7" BorderBrush="#662F81F7" BorderThickness="0,0,0,1">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8">
+                    <Button Content="Download" Click="UpdateBannerDownload_Click" Padding="12,3"/>
+                    <Button Content="Skip This Version" Click="UpdateBannerSkip_Click" Padding="12,3"/>
+                    <Button Content="Dismiss" Click="UpdateBannerDismiss_Click" Padding="12,3"/>
+                </StackPanel>
+                <TextBlock x:Name="UpdateBannerText" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+            </DockPanel>
+        </Border>
+
+        <!-- Status bar. -->
+        <Border DockPanel.Dock="Bottom" Padding="6,3" BorderThickness="0,1,0,0" BorderBrush="#22FFFFFF">
+            <DockPanel>
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right">
+                    <Button x:Name="CancelBatchButton" Padding="6,2" Margin="0,0,8,0"
+                            IsVisible="False" Click="CancelBatchButton_Click"
+                            ToolTip.Tip="Cancel the running batch operation.">
+                        <StackPanel Orientation="Horizontal">
+                            <Image Source="{StaticResource CloseIcon}" Width="12" Height="12" Margin="0,0,4,0"/>
+                            <TextBlock Text="Cancel" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <ProgressBar x:Name="ScanProgressBar" Width="160" Height="16" IsIndeterminate="False" IsVisible="False"/>
+                </StackPanel>
+                <TextBlock x:Name="SelectedPathText" Text="No entry selected." VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+            </DockPanel>
+        </Border>
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="375"/>
+                <ColumnDefinition Width="4"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <DockPanel Grid.Column="0" Margin="8,4,4,0">
+                <StackPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+                    <ComboBox x:Name="TypeFilterCombo" Margin="0,0,0,4" HorizontalAlignment="Stretch"
+                              SelectionChanged="TreeFilter_Changed">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal">
+                                    <Image Width="16" Height="16" Margin="0,0,8,0"
+                                           Source="{Binding IconResourceKey, Converter={StaticResource ResourceKeyToImageConverter}}"/>
+                                    <TextBlock Text="{Binding Label}" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <Grid>
+                        <TextBox x:Name="SearchBox" Padding="24,3,4,3"
+                                 ToolTip.Tip="Filter the tree by entry name (e.g. H09, e07, VOICE_0012)."
+                                 TextChanged="SearchBox_TextChanged"/>
+                        <Image Source="{StaticResource SearchIcon}" Width="14" Height="14"
+                               HorizontalAlignment="Left" VerticalAlignment="Center"
+                               Margin="6,0,0,0" IsHitTestVisible="False" Opacity="0.6"/>
+                    </Grid>
+                </StackPanel>
+
+                <TreeView x:Name="Tree" SelectionChanged="Tree_SelectionChanged"/>
+            </DockPanel>
+
+            <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Stretch" ResizeDirection="Columns"/>
+
+            <Grid Grid.Column="2" Margin="8" ContextMenu="{StaticResource PreviewContextMenu}">
+
+                <!-- Still images: backgrounds, overlays, and a scene archive's background. An overlay
+                     can be drawn on its scene's background at its screen position. -->
+                <DockPanel x:Name="ImagePanel" IsVisible="False">
+                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                        <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right">
+                            <ToggleButton x:Name="ImageBackgroundToggle" Classes="pill" IsVisible="False"
+                                          Checked="ImageBackgroundToggle_Changed" Unchecked="ImageBackgroundToggle_Changed"
+                                          ToolTip.Tip="Draw on the scene background at the real screen position (B).">
+                                <StackPanel Orientation="Horizontal">
+                                    <Image Source="{StaticResource ModLayersIcon}" Width="14" Height="14" Margin="0,0,4,0"/>
+                                    <TextBlock Text="On background" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </ToggleButton>
+                            <Button Classes="tool" Width="32" Margin="0,0,6,0" Click="ImageResetZoom_Click" ToolTip.Tip="Fit to window">
+                                <Image Source="{StaticResource FitToWindowIcon}" Width="16" Height="16"/>
+                            </Button>
+                            <TextBlock x:Name="ImageZoomLabel" VerticalAlignment="Center" Opacity="0.75" Margin="0,0,10,0" MinWidth="42" TextAlignment="Right"/>
+                            <Button Classes="tool" Margin="0,0,4,0" Click="ImageZoomOut_Click" ToolTip.Tip="Zoom out">
+                                <Image Source="{StaticResource ZoomOutIcon}" Width="14" Height="14"/>
+                            </Button>
+                            <Slider x:Name="ImageZoomSlider" Width="140" VerticalAlignment="Center"
+                                    Minimum="10" Maximum="800" Value="100" SmallChange="10" LargeChange="50"/>
+                            <Button Classes="tool" Margin="4,0,0,0" Click="ImageZoomIn_Click" ToolTip.Tip="Zoom in">
+                                <Image Source="{StaticResource ZoomInIcon}" Width="14" Height="14"/>
+                            </Button>
+                        </StackPanel>
+                        <TextBlock x:Name="ImageInfoText" VerticalAlignment="Center" Opacity="0.75" TextTrimming="CharacterEllipsis"/>
+                    </DockPanel>
+                    <ScrollViewer x:Name="ImageScrollViewer"
+                                  HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+                        <Grid MinWidth="{Binding #ImageScrollViewer.Viewport.Width}"
+                              MinHeight="{Binding #ImageScrollViewer.Viewport.Height}">
+                            <LayoutTransformControl x:Name="ImageTransformHost" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <Canvas x:Name="ImageStage" ClipToBounds="True">
+                                    <Image x:Name="ImageBackground" Canvas.Left="0" Canvas.Top="0" Stretch="None"
+                                           RenderOptions.BitmapInterpolationMode="None"/>
+                                    <Image x:Name="PreviewImage" Canvas.Left="0" Canvas.Top="0" Stretch="None"
+                                           RenderOptions.BitmapInterpolationMode="None"/>
+                                </Canvas>
+                            </LayoutTransformControl>
+                        </Grid>
+                    </ScrollViewer>
+                </DockPanel>
+
+                <!-- Sprite animations: frames decoded on demand and placed on a canvas that is either the
+                     animation's own bounding box or the scene background, at their screen coordinates. -->
+                <DockPanel x:Name="AnimationPanel" IsVisible="False">
+                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                        <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right">
+                            <ToggleButton x:Name="AnimBackgroundToggle" Classes="pill"
+                                          Checked="AnimBackgroundToggle_Changed" Unchecked="AnimBackgroundToggle_Changed"
+                                          ToolTip.Tip="Draw on the scene background at the real screen position (B).">
+                                <StackPanel Orientation="Horizontal">
+                                    <Image Source="{StaticResource ModLayersIcon}" Width="14" Height="14" Margin="0,0,4,0"/>
+                                    <TextBlock Text="On background" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </ToggleButton>
+                            <Button Classes="tool" Width="32" Margin="0,0,6,0" Click="AnimResetZoom_Click" ToolTip.Tip="Fit to window">
+                                <Image Source="{StaticResource FitToWindowIcon}" Width="16" Height="16"/>
+                            </Button>
+                            <TextBlock x:Name="AnimZoomLabel" VerticalAlignment="Center" Opacity="0.75" Margin="0,0,10,0" MinWidth="42" TextAlignment="Right"/>
+                            <Button Classes="tool" Margin="0,0,4,0" Click="AnimZoomOut_Click" ToolTip.Tip="Zoom out">
+                                <Image Source="{StaticResource ZoomOutIcon}" Width="14" Height="14"/>
+                            </Button>
+                            <Slider x:Name="AnimZoomSlider" Width="140" VerticalAlignment="Center"
+                                    Minimum="10" Maximum="800" Value="100" SmallChange="10" LargeChange="50"/>
+                            <Button Classes="tool" Margin="4,0,0,0" Click="AnimZoomIn_Click" ToolTip.Tip="Zoom in">
+                                <Image Source="{StaticResource ZoomInIcon}" Width="14" Height="14"/>
+                            </Button>
+                        </StackPanel>
+                        <TextBlock x:Name="AnimInfoText" VerticalAlignment="Center" Opacity="0.75" TextTrimming="CharacterEllipsis"/>
+                    </DockPanel>
+
+                    <!-- Transport: play/pause, stop, step, frame counter, loop, fps. -->
+                    <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+                        <Slider x:Name="AnimScrubSlider" Minimum="0" Maximum="1" Value="0" TickFrequency="1" IsSnapToTickEnabled="True"
+                                ValueChanged="AnimScrubSlider_ValueChanged"
+                                PointerPressed="AnimScrubSlider_PointerPressed" PointerReleased="AnimScrubSlider_PointerReleased"/>
+                        <DockPanel Margin="0,6,0,0">
+                            <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                <CheckBox x:Name="AnimLoopCheck" Content="Loop" VerticalAlignment="Center" Margin="0,0,14,0"
+                                          Checked="AnimLoop_Changed" Unchecked="AnimLoop_Changed"/>
+                                <TextBlock Text="fps" VerticalAlignment="Center" Opacity="0.7" Margin="0,0,6,0"/>
+                                <NumericUpDown x:Name="AnimFpsBox" Minimum="1" Maximum="60" Increment="1" FormatString="0.#" Width="110"
+                                               ValueChanged="AnimFps_ValueChanged"
+                                               ToolTip.Tip="The files store no timing; this is a choice (also used for exported APNGs)."/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <Button x:Name="AnimPlayPauseButton" Width="44" Height="36" Margin="0,0,6,0" Click="AnimPlayPause_Click" ToolTip.Tip="Play / Pause (Space)">
+                                    <Image x:Name="AnimPlayPauseIcon" Source="{StaticResource PlayIcon}" Width="18" Height="18"/>
+                                </Button>
+                                <Button Width="44" Height="36" Margin="0,0,6,0" Click="AnimStop_Click" ToolTip.Tip="Stop and rewind">
+                                    <Image Source="{StaticResource StopIcon}" Width="14" Height="14"/>
+                                </Button>
+                                <Button Content="◀" Width="36" Height="36" Margin="0,0,2,0" Click="AnimStepBack_Click" ToolTip.Tip="Previous frame (Left)"/>
+                                <Button Content="▶" Width="36" Height="36" Margin="0,0,12,0" Click="AnimStepForward_Click" ToolTip.Tip="Next frame (Right)"/>
+                                <TextBlock x:Name="AnimFrameText" VerticalAlignment="Center" FontFamily="Consolas" FontSize="12" Opacity="0.85" Text="frame 0 / 0"/>
+                            </StackPanel>
+                        </DockPanel>
+                    </StackPanel>
+
+                    <ScrollViewer x:Name="AnimScrollViewer"
+                                  HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+                        <Grid MinWidth="{Binding #AnimScrollViewer.Viewport.Width}"
+                              MinHeight="{Binding #AnimScrollViewer.Viewport.Height}">
+                            <LayoutTransformControl x:Name="AnimTransformHost" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <Canvas x:Name="AnimStage" ClipToBounds="True">
+                                    <Image x:Name="AnimBackground" Canvas.Left="0" Canvas.Top="0" Stretch="None"
+                                           RenderOptions.BitmapInterpolationMode="None"/>
+                                    <Rectangle x:Name="AnimBoundsRect" Stroke="#80E0A030" StrokeThickness="1" StrokeDashArray="4,3"
+                                               IsHitTestVisible="False"/>
+                                    <Image x:Name="AnimFrameImage" Canvas.Left="0" Canvas.Top="0" Stretch="None"
+                                           RenderOptions.BitmapInterpolationMode="None"/>
+                                </Canvas>
+                            </LayoutTransformControl>
+                        </Grid>
+                    </ScrollViewer>
+                </DockPanel>
+
+                <!-- Text: hex dumps, lip-sync tracks, errors. -->
+                <TextBox x:Name="TextPanel" IsVisible="False"
+                         IsReadOnly="True"
+                         ContextMenu="{StaticResource PreviewContextMenu}"
+                         FontFamily="Consolas" FontSize="12"
+                         TextWrapping="NoWrap" AcceptsReturn="True"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Auto"/>
+
+                <!-- Sound: PCM wrapped as WAV, played through LibVLC. -->
+                <StackPanel x:Name="SoundPanel" IsVisible="False" VerticalAlignment="Top" Margin="0,24,0,0">
+                    <TextBlock x:Name="SoundInfoText" TextWrapping="Wrap" FontSize="14" Margin="0,0,0,18" Opacity="0.85"/>
+
+                    <!-- Stretch must NOT be "None": bars are centred within their slot, so the geometry's own
+                         bounding box always falls a bit short of the requested width and Stretch=None would
+                         re-fire SizeChanged with a smaller width on every layout pass. -->
+                    <Image x:Name="WaveformImage" Height="64" Stretch="Fill"
+                           HorizontalAlignment="Stretch"
+                           SizeChanged="WaveformImage_SizeChanged"/>
+
+                    <Slider x:Name="SoundSlider" Margin="0,4,0,0" Minimum="0"
+                            PointerPressed="SoundSlider_PointerPressed" PointerReleased="SoundSlider_PointerReleased"/>
+
+                    <Grid Margin="0,4,0,0">
+                        <TextBlock x:Name="SoundCurrentTimeText" HorizontalAlignment="Left"
+                                   FontFamily="Consolas" FontSize="12" Opacity="0.8" Text="0:00"/>
+                        <TextBlock x:Name="SoundTotalTimeText" HorizontalAlignment="Right"
+                                   FontFamily="Consolas" FontSize="12" Opacity="0.8" Text="0:00"/>
+                    </Grid>
+
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,20,0,0">
+                        <Button x:Name="PlayPauseButton" Width="48" Height="48" Click="PlayPauseButton_Click"
+                                ToolTip.Tip="Play / Pause (Space)">
+                            <Image x:Name="PlayPauseIcon" Source="{StaticResource PlayIcon}" Width="22" Height="22"/>
+                        </Button>
+                        <Button x:Name="StopButton" Width="48" Height="48" Margin="12,0,0,0" Click="StopButton_Click"
+                                ToolTip.Tip="Stop">
+                            <Image Source="{StaticResource StopIcon}" Width="18" Height="18"/>
+                        </Button>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Video: the restored Bink file, played natively by LibVLC (VLC's own libavcodec
+                     decodes Bink video and audio, so no transcoding step is needed). -->
+                <DockPanel x:Name="VideoPanel" IsVisible="False" Margin="0,24,0,0">
+                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                        <TextBlock x:Name="VideoLabel" TextWrapping="Wrap" FontSize="14"/>
+                        <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right">
+                            <TextBlock x:Name="VideoZoomLabel" VerticalAlignment="Center" Opacity="0.7" Margin="0,0,10,0" MinWidth="42"/>
+                            <Slider x:Name="VideoZoomSlider" Width="180" VerticalAlignment="Center"
+                                    Minimum="25" Maximum="800" Value="100"
+                                    SmallChange="10" LargeChange="50"
+                                    ValueChanged="VideoZoomSlider_ValueChanged"/>
+                        </StackPanel>
+                    </DockPanel>
+                    <StackPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
+                        <Slider x:Name="VideoScrubSlider" Minimum="0" Maximum="1" Value="0"
+                                PointerPressed="VideoScrubSlider_PointerPressed"
+                                PointerReleased="VideoScrubSlider_PointerReleased"
+                                ValueChanged="VideoScrubSlider_ValueChanged"/>
+                        <Grid Margin="0,2,0,10">
+                            <TextBlock x:Name="VideoCurrentTimeText" HorizontalAlignment="Left"
+                                       FontFamily="Consolas" FontSize="12" Opacity="0.8" Text="0:00"/>
+                            <TextBlock x:Name="VideoTotalTimeText" HorizontalAlignment="Right"
+                                       FontFamily="Consolas" FontSize="12" Opacity="0.8" Text="0:00"/>
+                        </Grid>
+                        <StackPanel Orientation="Horizontal">
+                            <Button x:Name="VideoPlayPauseButton" Width="48" Height="36" Margin="0,0,6,0"
+                                    Click="VideoPlayPauseButton_Click" ToolTip.Tip="Play / Pause (Space)">
+                                <Image x:Name="VideoPlayPauseIcon" Source="{StaticResource PlayIcon}" Width="18" Height="18"/>
+                            </Button>
+                            <Button x:Name="VideoStopButton" Width="48" Height="36" Margin="0,0,12,0"
+                                    Click="VideoStopButton_Click" ToolTip.Tip="Stop">
+                                <Image Source="{StaticResource StopIcon}" Width="14" Height="14"/>
+                            </Button>
+                            <Button x:Name="OpenExternalButton" Content="Open in External Player"
+                                    Padding="12,6" Click="OpenExternalButton_Click"/>
+                        </StackPanel>
+                    </StackPanel>
+                    <ScrollViewer x:Name="VideoScrollViewer"
+                                  HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+                        <Grid MinWidth="{Binding #VideoScrollViewer.Viewport.Width}"
+                              MinHeight="{Binding #VideoScrollViewer.Viewport.Height}">
+                            <vlc:VideoView x:Name="VideoPlayer" Width="640" Height="375"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Grid>
+                    </ScrollViewer>
+                </DockPanel>
+
+            </Grid>
+        </Grid>
+    </DockPanel>
+
+        <!-- In-app settings overlay: sits on top of the whole DockPanel (menu bar included). -->
+        <views:SettingsPanel x:Name="SettingsOverlay" IsVisible="False" Focusable="True"/>
+    </Grid>
+</Window>

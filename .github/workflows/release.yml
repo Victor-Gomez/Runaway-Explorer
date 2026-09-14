@@ -1,0 +1,109 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v0.1.0)'
+        required: true
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+          - os: ubuntu-latest
+            rid: linux-x64
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Test
+        # Core only: the UI suite drives headless Avalonia windows, which needs fonts and a display stack the runners lack.
+        run: dotnet test tests/RunawayExplorer.Core.Tests -c Release
+
+      - name: Resolve tag
+        id: tag
+        shell: pwsh
+        run: |
+          $tag = if ($env:GITHUB_REF -like 'refs/tags/*') { $env:GITHUB_REF -replace '^refs/tags/','' } else { '${{ inputs.tag }}' }
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          # Assembly Version wants a bare numeric x.y.z -- strip the leading "v" and any -prerelease
+          # suffix, which only InformationalVersion can carry.
+          $version = ($tag -replace '^v','') -replace '-.*$',''
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Publish
+        shell: pwsh
+        run: |
+          dotnet publish src/RunawayExplorer/RunawayExplorer.csproj `
+            -c Release -r ${{ matrix.rid }} --self-contained true `
+            -p:DebugType=none -p:DebugSymbols=false `
+            -p:Version=${{ steps.tag.outputs.version }} `
+            -p:InformationalVersion=${{ steps.tag.outputs.version }}+${{ github.sha }} `
+            -o publish
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $zip = "RunawayExplorer-${{ steps.tag.outputs.tag }}-${{ matrix.rid }}.zip"
+          Compress-Archive -Path publish\* -DestinationPath $zip
+
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          chmod +x publish/RunawayExplorer
+          archive="RunawayExplorer-${{ steps.tag.outputs.tag }}-${{ matrix.rid }}.tar.gz"
+          tar -czf "$archive" -C publish .
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: package-${{ matrix.rid }}
+          path: RunawayExplorer-${{ steps.tag.outputs.tag }}-${{ matrix.rid }}.*
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Resolve tag
+        id: tag
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            tag="${GITHUB_REF#refs/tags/}"
+          else
+            tag="${{ inputs.tag }}"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Download all package artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: package-*
+          path: dist
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          files: dist/*
+          generate_release_notes: true

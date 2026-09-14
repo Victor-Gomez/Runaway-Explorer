@@ -1,0 +1,19 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="RunawayExplorer.Views.ShortcutsWindow"
+        Title="Keyboard Shortcuts"
+        WindowStartupLocation="CenterOwner"
+        SizeToContent="Height"
+        Width="460"
+        CanResize="False"
+        ShowInTaskbar="False"
+        Icon="avares://RunawayExplorer/Assets/RunawayExplorer.ico">
+
+    <DockPanel Margin="20">
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+            <Button Content="Close" Click="Close_Click" Padding="20,6" IsDefault="True"/>
+        </StackPanel>
+
+        <StackPanel x:Name="GroupsPanel"/>
+    </DockPanel>
+</Window>

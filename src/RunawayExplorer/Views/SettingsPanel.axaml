@@ -1,0 +1,276 @@
+<UserControl x:Class="RunawayExplorer.Views.SettingsPanel"
+             xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <UserControl.Styles>
+        <!-- WinUI-style settings row: a rounded rectangle with title+subtitle on the left and a
+             control docked to the right. Rows stack vertically with a small gap. -->
+        <Style Selector="Border.settingCard">
+            <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="16,12"/>
+            <Setter Property="Margin" Value="0,0,0,4"/>
+        </Style>
+        <Style Selector="TextBlock.settingTitle">
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="TextBlock.settingSubtitle">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Opacity" Value="0.65"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Margin" Value="0,2,0,0"/>
+        </Style>
+        <Style Selector="TextBlock.sectionHeader">
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Opacity" Value="0.85"/>
+            <Setter Property="Margin" Value="2,18,0,6"/>
+        </Style>
+
+        <!-- WinUI 3 NavigationViewItem look for the category list. -->
+        <Style Selector="ListBoxItem.settingsNav">
+            <Setter Property="Padding" Value="14,10"/>
+            <Setter Property="Margin" Value="0,2"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}"/>
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Grid>
+                        <Border Name="Bg" Background="{TemplateBinding Background}" CornerRadius="4"/>
+                        <Rectangle Name="Indicator" Width="3" Height="16"
+                                   RadiusX="1.5" RadiusY="1.5"
+                                   HorizontalAlignment="Left" VerticalAlignment="Center"
+                                   Margin="2,0,0,0"
+                                   Fill="{DynamicResource AccentFillColorDefaultBrush}"
+                                   Opacity="0"/>
+                        <ContentPresenter Content="{TemplateBinding Content}"
+                                          Margin="{TemplateBinding Padding}"
+                                          HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                    </Grid>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="ListBoxItem.settingsNav:pointerover /template/ Border#Bg">
+            <Setter Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}"/>
+        </Style>
+        <Style Selector="ListBoxItem.settingsNav:selected /template/ Border#Bg">
+            <Setter Property="Background" Value="{DynamicResource SubtleFillColorTertiaryBrush}"/>
+        </Style>
+        <Style Selector="ListBoxItem.settingsNav:selected /template/ Rectangle#Indicator">
+            <Setter Property="Opacity" Value="1"/>
+        </Style>
+    </UserControl.Styles>
+
+    <!-- Modal-style overlay: a semi-transparent scrim over the app plus a centered card. -->
+    <Border Background="#88000000" PointerPressed="Scrim_PointerPressed">
+        <Border Background="{DynamicResource SolidBackgroundFillColorBaseBrush}"
+                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                BorderThickness="1" CornerRadius="8"
+                Margin="40" MaxWidth="1000" MaxHeight="720"
+                PointerPressed="Card_PointerPressed">
+            <Grid RowDefinitions="Auto,*">
+                <DockPanel Grid.Row="0" Margin="20,10,10,8">
+                    <Button DockPanel.Dock="Right" Width="34" Height="34" Padding="0" Click="Close_Click"
+                            Background="Transparent" BorderThickness="0"
+                            ToolTip.Tip="Close settings (Esc)">
+                        <Image Source="{StaticResource CloseIcon}" Width="12" Height="12"/>
+                    </Button>
+                    <TextBlock Text="Settings" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                </DockPanel>
+
+                <Grid Grid.Row="1" ColumnDefinitions="220,*">
+                    <ListBox x:Name="CategoryList" Grid.Column="0" BorderThickness="0" Padding="4,6,4,10"
+                             Background="Transparent"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             SelectionChanged="CategoryList_SelectionChanged">
+                        <ListBoxItem Classes="settingsNav" Content="Playback" Tag="Playback" IsSelected="True"/>
+                        <ListBoxItem Classes="settingsNav" Content="Export" Tag="Export"/>
+                        <ListBoxItem Classes="settingsNav" Content="Scanning" Tag="Scanning"/>
+                        <ListBoxItem Classes="settingsNav" Content="Appearance" Tag="Appearance"/>
+                        <ListBoxItem Classes="settingsNav" Content="Updates" Tag="Updates"/>
+                    </ListBox>
+
+                    <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
+                        <Grid Margin="32,16,32,24">
+
+                            <!-- Playback -->
+                            <StackPanel x:Name="PlaybackSection">
+                                <TextBlock Text="Playback" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                <TextBlock Text="How animations, sounds and videos behave when selected."
+                                           Opacity="0.7" Margin="0,0,0,16"/>
+
+                                <TextBlock Text="Animations" Classes="sectionHeader" Margin="2,0,0,6"/>
+                                <Border Classes="settingCard">
+                                    <DockPanel>
+                                        <NumericUpDown x:Name="FpsBox" DockPanel.Dock="Right" VerticalAlignment="Center" Margin="12,0,0,0"
+                                                       Minimum="1" Maximum="60" Increment="1" FormatString="0.#" Width="120"
+                                                       ValueChanged="Fps_ValueChanged"/>
+                                        <StackPanel>
+                                            <TextBlock Text="Frame rate" Classes="settingTitle"/>
+                                            <TextBlock Text="Frames per second for playback and for exported animated PNGs. The game files store no timing, so this is a choice, not a fact -- 12 looks right for most cycles." Classes="settingSubtitle"/>
+                                        </StackPanel>
+                                    </DockPanel>
+                                </Border>
+                                <Border Classes="settingCard">
+                                    <DockPanel>
+                                        <CheckBox x:Name="LoopAnimationCheck" DockPanel.Dock="Right" VerticalAlignment="Center" Margin="12,0,0,0"
+                                                  Checked="LoopAnimation_Changed" Unchecked="LoopAnimation_Changed"/>
+                                        <StackPanel>
+                                            <TextBlock Text="Loop animations" Classes="settingTitle"/>
+                                            <TextBlock Text="Restart from the first frame when the last one has been shown." Classes="settingSubtitle"/>
+                                        </StackPanel>
+                                    </DockPanel>
+                                </Border>
+                                <Border Classes="settingCard">
+                                    <DockPanel>
+                                        <CheckBox x:Name="AutoPlayAnimationCheck" DockPanel.Dock="Right" VerticalAlignment="Center" Margin="12,0,0,0"
+                                                  Checked="AutoPlayAnimation_Changed" Unchecked="AutoPlayAnimation_Changed"/>
+                                        <StackPanel>
+                                            <TextBlock Text="Auto-play animations" Classes="settingTitle"/>
+                                            <TextBlock Text="Start playing as soon as an animation is selected in the tree." Classes="settingSubtitle"/>
+                                        </StackPanel>
+                                    </DockPanel>
+                                </Border>
+                                <Border Classes="settingCard">
+                                    <DockPanel>
+                                        <CheckBox x:Name="ShowOnBackgroundCheck" DockPanel.Dock="Right" VerticalAlignment="Center" Margin="12,0,0,0"
+                                                  Checked="ShowOnBackground_Changed" Unchecked="ShowOnBackground_Changed"/>
+                                        <StackPanel>
+                                            <TextBlock Text="Show on scene background" Classes="settingTitle"/>
+                                            <TextBlock Text="Draw overlays and animation frames on top of their scene's background, at their real screen position. Off shows them alone on a checkerboard." Classes="settingSubtitle"/>
+                                        </StackPanel>
+                                    </DockPanel>
+                                </Border>
+
+                                <TextBlock Text="Sound and video" Classes="sectionHeader"/>
+                                <Border Classes="settingCard">
+                                    <DockPanel>
+                                        <NumericUpDown x:Name="VoiceRateBox" DockPanel.Dock="Right" VerticalAlignment="Center" Margin="12,0,0,0"
+                                                       Minimum="8000" Maximum="48000" Increment="50" FormatString="0" Width="140"
+                                                       ValueChanged="VoiceRate_ValueChanged"/>
+                                        <StackPanel>
+                                            <TextBlock Text="Voice sample rate (Hz)" Classes="settingTitle"/>
+                                            <TextBlock Text="The voice shards carry no rate. 16000 sounds right; lower if the lines sound rushed, raise if they drag." Classes="settingSubtitle"/>
+                                        </StackPanel>
+                                    </DockPanel>
+                                </Border>
+                            </StackPanel>
+
+                            <!-- Export -->
+                            <StackPanel x:Name="ExportSection" IsVisible="False">
+                                <TextBlock Text="Export" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                <TextBlock Text="What Export and Batch Export write."
+                                           Opacity="0.7" Margin="0,0,0,16"/>
+
+                                <Border Classes="settingCard">
+                                    <DockPanel>
+                                        <CheckBox x:Name="ExportFramesCheck" DockPanel.Dock="Right" VerticalAlignment="Center" Margin="12,0,0,0"
+                                                  Checked="ExportFrames_Changed" Unchecked="ExportFrames_Changed"/>
+                                        <StackPanel>
+                                            <TextBlock Text="Also export animation frames" Classes="settingTitle"/>
+                                            <TextBlock Text="Next to each animated PNG, write a folder with one cropped PNG per frame, named with the frame's screen position (frame_0030_x394_y101.png)." Classes="settingSubtitle"/>
+                                        </StackPanel>
+                                    </DockPanel>
+                                </Border>
+                                <Border Classes="settingCard">
+                                    <StackPanel>
+                                        <TextBlock Text="Naming" Classes="settingTitle"/>
+                                        <TextBlock Classes="settingSubtitle"
+                                                   Text="Backgrounds: e00_1024x600.png. Overlays: e02_384x225_at_320_80.png (top-left on the 1024x600 screen). Animations: e07.png (APNG on the animation's bounding box; its top-left is in the status bar). Audio: t003.wav / VOICE_00123.wav. Video: DATAVB02_001.bik."/>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+
+                            <!-- Scanning -->
+                            <StackPanel x:Name="ScanningSection" IsVisible="False">
+                                <TextBlock Text="Scanning" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                <TextBlock Text="Opening an install means probing every scene-archive entry to find out what it is."
+                                           Opacity="0.7" Margin="0,0,0,16"/>
+
+                                <Border Classes="settingCard">
+                                    <DockPanel>
+                                        <CheckBox x:Name="UseScanCacheCheck" DockPanel.Dock="Right" VerticalAlignment="Center" Margin="12,0,0,0"
+                                                  Checked="UseScanCache_Changed" Unchecked="UseScanCache_Changed"/>
+                                        <StackPanel>
+                                            <TextBlock Text="Remember scan results" Classes="settingTitle"/>
+                                            <TextBlock Text="Keep the classification of every archive entry between launches, keyed by the archive's size and date. A changed archive is always rescanned." Classes="settingSubtitle"/>
+                                        </StackPanel>
+                                    </DockPanel>
+                                </Border>
+                                <Border Classes="settingCard">
+                                    <DockPanel>
+                                        <Button DockPanel.Dock="Right" Content="Clear and Rescan" Padding="16,4" Margin="12,0,0,0" Click="ClearScanCache_Click"/>
+                                        <StackPanel>
+                                            <TextBlock Text="Clear the scan cache" Classes="settingTitle"/>
+                                            <TextBlock x:Name="ScanCacheText" Classes="settingSubtitle"/>
+                                        </StackPanel>
+                                    </DockPanel>
+                                </Border>
+                            </StackPanel>
+
+                            <!-- Appearance -->
+                            <StackPanel x:Name="AppearanceSection" IsVisible="False">
+                                <TextBlock Text="Appearance" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                <TextBlock Text="Light or dark mode for the application chrome."
+                                           Opacity="0.7" Margin="0,0,0,16"/>
+
+                                <Border Classes="settingCard">
+                                    <DockPanel>
+                                        <ComboBox x:Name="ThemeCombo" DockPanel.Dock="Right" VerticalAlignment="Center" Margin="12,0,0,0" MinWidth="140"
+                                                  SelectionChanged="Theme_SelectionChanged">
+                                            <ComboBoxItem Content="Follow system" Tag="System"/>
+                                            <ComboBoxItem Content="Light"         Tag="Light"/>
+                                            <ComboBoxItem Content="Dark"          Tag="Dark"/>
+                                        </ComboBox>
+                                        <StackPanel>
+                                            <TextBlock Text="Choose your mode" Classes="settingTitle"/>
+                                            <TextBlock Text="Change the colors that appear in the app." Classes="settingSubtitle"/>
+                                        </StackPanel>
+                                    </DockPanel>
+                                </Border>
+                            </StackPanel>
+
+                            <!-- Updates -->
+                            <StackPanel x:Name="UpdatesSection" IsVisible="False">
+                                <TextBlock Text="Updates" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                <TextBlock Text="Whether the app looks for newer releases. Nothing is ever downloaded or installed automatically."
+                                           Opacity="0.7" Margin="0,0,0,16"/>
+
+                                <Border Classes="settingCard">
+                                    <DockPanel>
+                                        <ComboBox x:Name="UpdateCheckCombo" DockPanel.Dock="Right" VerticalAlignment="Center" Margin="12,0,0,0" MinWidth="180"
+                                                  SelectionChanged="UpdateCheck_SelectionChanged">
+                                            <ComboBoxItem Content="Check on startup" Tag="OnStartup"/>
+                                            <ComboBoxItem Content="Only when I ask"  Tag="Never"/>
+                                        </ComboBox>
+                                        <StackPanel>
+                                            <TextBlock Text="Check for updates" Classes="settingTitle"/>
+                                            <TextBlock Text="Startup checks contact github.com at most once a day and read only the latest release number." Classes="settingSubtitle"/>
+                                        </StackPanel>
+                                    </DockPanel>
+                                </Border>
+
+                                <Border Classes="settingCard">
+                                    <DockPanel>
+                                        <Button x:Name="CheckNowButton" DockPanel.Dock="Right" Content="Check Now" Padding="16,4" Margin="12,0,0,0"
+                                                Click="CheckForUpdatesNow_Click"/>
+                                        <StackPanel>
+                                            <TextBlock Text="Check now" Classes="settingTitle"/>
+                                            <TextBlock x:Name="LastUpdateCheckText" Classes="settingSubtitle"/>
+                                        </StackPanel>
+                                    </DockPanel>
+                                </Border>
+                            </StackPanel>
+
+                        </Grid>
+                    </ScrollViewer>
+                </Grid>
+            </Grid>
+        </Border>
+    </Border>
+</UserControl>
