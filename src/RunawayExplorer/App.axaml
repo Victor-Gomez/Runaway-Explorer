@@ -18,11 +18,83 @@
                 <ColorPaletteResources x:Key="Light" Accent="#FF005FB8"/>
             </FluentTheme.Palettes>
         </FluentTheme>
+
+        <!-- Segmented control container and buttons (used for background mode and view selectors) -->
+        <Style Selector="Border.segmented">
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeColorDefaultBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}"/>
+            <Setter Property="Padding" Value="1"/>
+        </Style>
+        <Style Selector="RadioButton.segment">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="9,3"/>
+            <Setter Property="CornerRadius" Value="3"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontWeight" Value="Normal"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="MinHeight" Value="0"/>
+            <Setter Property="MinWidth" Value="0"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border Name="RootBorder"
+                            Background="{TemplateBinding Background}"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter Name="PART_ContentPresenter"
+                                          Content="{TemplateBinding Content}"
+                                          ContentTemplate="{TemplateBinding ContentTemplate}"
+                                          HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                          RecognizesAccessKey="True"/>
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="RadioButton.segment:checked">
+            <Setter Property="Background" Value="{DynamicResource SegmentSelectedBackgroundBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource SegmentSelectedForegroundBrush}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style Selector="RadioButton.segment:pointerover:not(:checked)">
+            <Setter Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}"/>
+        </Style>
+        <Style Selector="RadioButton.segment:checked:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SegmentSelectedBackgroundBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource SegmentSelectedForegroundBrush}"/>
+        </Style>
+
+        <!-- Toolbar buttons with clear button chrome (border, card fill, hover accent) -->
+        <Style Selector="Button.zoomBtn">
+            <Setter Property="Height" Value="26"/>
+            <Setter Property="Padding" Value="7,2"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeColorDefaultBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="Button.zoomBtn:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}"/>
+        </Style>
+        <Style Selector="Button.zoomBtn:pressed">
+            <Setter Property="Background" Value="{DynamicResource SubtleFillColorTertiaryBrush}"/>
+        </Style>
     </Application.Styles>
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <ResourceInclude Source="avares://RunawayExplorer/Assets/Icons/VectorIcons.axaml"/>
+                <ResourceInclude Source="avares://RunawayExplorer/Assets/Localization/Strings.en.axaml"/>
             </ResourceDictionary.MergedDictionaries>
             <services:ResourceKeyToImageConverter x:Key="ResourceKeyToImageConverter"/>
 

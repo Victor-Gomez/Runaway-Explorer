@@ -1,0 +1,137 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- Menus -->
+    <x:String x:Key="Menu_File">_File</x:String>
+    <x:String x:Key="Menu_SelectFolder">_Select Runaway Install Folder...</x:String>
+    <x:String x:Key="Menu_OpenRecent">Open _Recent</x:String>
+    <x:String x:Key="Menu_Export">_Export...</x:String>
+    <x:String x:Key="Menu_ExportRaw">Export Ra_w...</x:String>
+    <x:String x:Key="Menu_BatchExport">_Batch Export Folder...</x:String>
+    <x:String x:Key="Menu_Exit">E_xit</x:String>
+    <x:String x:Key="Menu_Options">_Options</x:String>
+    <x:String x:Key="Menu_AutoPlaySound">_Auto-play Sound</x:String>
+    <x:String x:Key="Menu_AutoPlayVideo">Auto-play _Video</x:String>
+    <x:String x:Key="Menu_LoopSound">Loop _Sound Playback</x:String>
+    <x:String x:Key="Menu_ShowOnBackground">Show on Scene _Background</x:String>
+    <x:String x:Key="Menu_Settings">_Settings...</x:String>
+    <x:String x:Key="Menu_Help">_Help</x:String>
+    <x:String x:Key="Menu_CheckUpdates">_Check for Updates...</x:String>
+    <x:String x:Key="Menu_Shortcuts">_Keyboard Shortcuts</x:String>
+    <x:String x:Key="Menu_About">_About Runaway Explorer</x:String>
+
+    <!-- Context Menus -->
+    <x:String x:Key="ContextMenu_CopyPath">_Copy Path</x:String>
+    <x:String x:Key="ContextMenu_Reveal">_Reveal in Explorer</x:String>
+    <x:String x:Key="ContextMenu_ExportItem">_Export This Item...</x:String>
+    <x:String x:Key="ContextMenu_ExportRaw">Export Ra_w...</x:String>
+    <x:String x:Key="ContextMenu_BatchExport">_Batch Export This Folder...</x:String>
+    <x:String x:Key="ContextMenu_ZoomIn">Zoom _In</x:String>
+    <x:String x:Key="ContextMenu_ZoomOut">Zoom _Out</x:String>
+    <x:String x:Key="ContextMenu_Fit">_Fit to Window</x:String>
+    <x:String x:Key="ContextMenu_Zoom100">_Actual Size (100%)</x:String>
+    <x:String x:Key="ContextMenu_CopySelection">_Copy Selection</x:String>
+    <x:String x:Key="ContextMenu_CopyText">Copy _All Text</x:String>
+    <x:String x:Key="ContextMenu_OpenExternal">Open in _External Player</x:String>
+
+    <!-- Tooltips -->
+    <x:String x:Key="ToolTip_Reveal">Show the archive or file on disk.</x:String>
+    <x:String x:Key="ToolTip_ExportItem">Export the decoded entry (images to PNG, animations to APNG, sounds to WAV, videos to BIK).</x:String>
+    <x:String x:Key="ToolTip_ExportRaw">Write the entry's bytes verbatim, as stored in the archive.</x:String>
+    <x:String x:Key="ToolTip_BatchExport">Recursively export every recognised entry under this folder.</x:String>
+    <x:String x:Key="ToolTip_BatchExportMenu">Recursively export every recognised entry under the selected folder into a chosen output directory.</x:String>
+    <x:String x:Key="ToolTip_ShowOnBackground">Draw overlays and animation frames on their scene's background, at their real screen position (B).</x:String>
+    <x:String x:Key="ToolTip_CheckUpdates">Ask GitHub whether a newer release exists. Nothing is downloaded or installed automatically.</x:String>
+    <x:String x:Key="ToolTip_CloseSettings">Close settings (Esc)</x:String>
+
+    <!-- Search & Filters -->
+    <x:String x:Key="Filter_Placeholder">Filter tree... (Ctrl+F)</x:String>
+    <x:String x:Key="Filter_All">All</x:String>
+    <x:String x:Key="Filter_Images">Images</x:String>
+    <x:String x:Key="Filter_Animations">Animations</x:String>
+    <x:String x:Key="Filter_Audio">Audio</x:String>
+    <x:String x:Key="Filter_Video">Video</x:String>
+
+    <!-- Toolbar -->
+    <x:String x:Key="Toolbar_ZoomIn">Zoom in (Ctrl++)</x:String>
+    <x:String x:Key="Toolbar_ZoomOut">Zoom out (Ctrl+-)</x:String>
+    <x:String x:Key="Toolbar_ZoomFit">Fit to window (Ctrl+0)</x:String>
+    <x:String x:Key="Toolbar_Zoom100">100% actual size</x:String>
+    <x:String x:Key="Toolbar_Play">Play (Space)</x:String>
+    <x:String x:Key="Toolbar_Pause">Pause (Space)</x:String>
+    <x:String x:Key="Toolbar_StepBack">Previous frame</x:String>
+    <x:String x:Key="Toolbar_StepForward">Next frame</x:String>
+    <x:String x:Key="Toolbar_Loop">Loop animation</x:String>
+    <x:String x:Key="Toolbar_OnCanvas">Scene</x:String>
+    <x:String x:Key="Toolbar_OnBoundingBox">Sprite</x:String>
+    <x:String x:Key="Toolbar_OpenExternal">Open in external player</x:String>
+    <x:String x:Key="Label_Background">background</x:String>
+    <x:String x:Key="Option_BackgroundNo">no</x:String>
+    <x:String x:Key="Option_BackgroundYes">yes</x:String>
+    <x:String x:Key="Option_BackgroundGreyed">greyed</x:String>
+    <x:String x:Key="Toolbar_Export">Export decoded</x:String>
+    <x:String x:Key="Toolbar_ExportRaw">Export raw</x:String>
+
+    <!-- Settings Panel -->
+    <x:String x:Key="Settings_Title">Settings</x:String>
+    <x:String x:Key="Settings_Nav_Playback">Playback</x:String>
+    <x:String x:Key="Settings_Nav_Export">Export</x:String>
+    <x:String x:Key="Settings_Nav_Scanning">Scanning</x:String>
+    <x:String x:Key="Settings_Nav_Appearance">Appearance</x:String>
+    <x:String x:Key="Settings_Nav_Updates">Updates</x:String>
+
+    <x:String x:Key="Settings_Language_Title">Language</x:String>
+    <x:String x:Key="Settings_Language_Subtitle">Select the application and metadata language.</x:String>
+    <x:String x:Key="Settings_Language_English">English</x:String>
+    <x:String x:Key="Settings_Language_Spanish">Español</x:String>
+
+    <x:String x:Key="Settings_Theme_Title">Theme</x:String>
+    <x:String x:Key="Settings_Theme_Subtitle">Select the application visual theme.</x:String>
+    <x:String x:Key="Settings_Theme_Dark">Dark</x:String>
+    <x:String x:Key="Settings_Theme_Light">Light</x:String>
+    <x:String x:Key="Settings_Theme_System">System</x:String>
+
+    <x:String x:Key="Settings_AutoPlaySound_Title">Auto-play sound</x:String>
+    <x:String x:Key="Settings_AutoPlaySound_Subtitle">Play sound entries as soon as they are selected.</x:String>
+    <x:String x:Key="Settings_AutoPlayVideo_Title">Auto-play video</x:String>
+    <x:String x:Key="Settings_AutoPlayVideo_Subtitle">Play videos as soon as they are selected.</x:String>
+    <x:String x:Key="Settings_LoopSound_Title">Loop sound playback</x:String>
+    <x:String x:Key="Settings_LoopSound_Subtitle">Loop sound effects and music on end-of-file.</x:String>
+    <x:String x:Key="Settings_AutoPlayAnim_Title">Auto-play animations</x:String>
+    <x:String x:Key="Settings_AutoPlayAnim_Subtitle">Start animations playing as soon as they are selected.</x:String>
+    <x:String x:Key="Settings_LoopAnim_Title">Loop animations</x:String>
+    <x:String x:Key="Settings_LoopAnim_Subtitle">Loop animations on completion.</x:String>
+    <x:String x:Key="Settings_Fps_Title">Default animation frame rate</x:String>
+    <x:String x:Key="Settings_Fps_Subtitle">The game files store no timing; 15 fps is the default.</x:String>
+    <x:String x:Key="Settings_ShowOnBg_Title">Show on scene background</x:String>
+    <x:String x:Key="Settings_ShowOnBg_Subtitle">Draw overlays and animations on top of their scene background at their real screen coordinates.</x:String>
+    <x:String x:Key="Settings_AnimFrames_Title">Export individual animation frames</x:String>
+    <x:String x:Key="Settings_AnimFrames_Subtitle">When exporting an animation, also write one PNG per frame next to the APNG.</x:String>
+    <x:String x:Key="Settings_VoiceRate_Title">Voice line sample rate</x:String>
+    <x:String x:Key="Settings_VoiceRate_Subtitle">Voice files carry no sample rate; 16,000 Hz is assumed.</x:String>
+    <x:String x:Key="Settings_ScanCache_Title">Remember archive scans</x:String>
+    <x:String x:Key="Settings_ScanCache_Subtitle">Cache entry classifications between launches so reopening an install is instant.</x:String>
+    <x:String x:Key="Settings_ClearCache_Button">Clear Cache</x:String>
+    <x:String x:Key="Settings_Updates_Title">Startup update check</x:String>
+    <x:String x:Key="Settings_Updates_Subtitle">Ask GitHub whether a newer release exists. Nothing is downloaded automatically.</x:String>
+
+    <!-- Command Palette -->
+    <x:String x:Key="CommandPalette_Placeholder">Type a command or search assets...</x:String>
+
+    <!-- Animation Export Dialog -->
+    <x:String x:Key="ExportAnim_Title">Export Animation</x:String>
+    <x:String x:Key="ExportAnim_Header">Export Animation</x:String>
+    <x:String x:Key="ExportAnim_Prompt">Choose an export format for this animation:</x:String>
+    <x:String x:Key="ExportAnim_Apng_Title">Animated PNG (APNG)</x:String>
+    <x:String x:Key="ExportAnim_Apng_Desc">Single animated image file (.png) playable in browsers and image viewers.</x:String>
+    <x:String x:Key="ExportAnim_Sequence_Title">Image Sequence</x:String>
+    <x:String x:Key="ExportAnim_Sequence_Desc">A folder containing every animation frame as an individual PNG image.</x:String>
+    <x:String x:Key="ExportAnim_SaveApng_Title">Export Animation (APNG)</x:String>
+    <x:String x:Key="ExportAnim_SaveSequence_Title">Select Destination Folder for Image Sequence</x:String>
+    <x:String x:Key="Dialog_Export">Export</x:String>
+    <x:String x:Key="Dialog_Cancel">Cancel</x:String>
+
+    <!-- Scene Overlays Panel -->
+    <x:String x:Key="SceneOverlays_Title">Overlay Objects</x:String>
+    <x:String x:Key="SceneOverlays_All">All</x:String>
+    <x:String x:Key="SceneOverlays_None">None</x:String>
+</ResourceDictionary>

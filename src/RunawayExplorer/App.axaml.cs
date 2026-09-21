@@ -20,9 +20,12 @@ public partial class App : Application
 
     public override void OnFrameworkInitializationCompleted()
     {
-        // Apply the persisted theme before the main window is created so Fluent theme resources
-        // are in place when controls resolve their default brushes.
-        RequestedThemeVariant = AppSettings.Load().Theme switch
+        // Apply the persisted theme and language before the main window is created so resources
+        // are in place when controls resolve their bindings and brushes.
+        var settings = AppSettings.Load();
+        LocalizationManager.Instance.Initialize(settings.Language);
+
+        RequestedThemeVariant = settings.Theme switch
         {
             "Light" => ThemeVariant.Light,
             "System" => ThemeVariant.Default,

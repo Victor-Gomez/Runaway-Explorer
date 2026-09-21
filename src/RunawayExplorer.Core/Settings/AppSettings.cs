@@ -30,12 +30,22 @@ public sealed class AppSettings
 
     /// <summary>
     /// Frame rate for animation playback and for exported APNGs. The game files store no timing at all,
-    /// so this is a choice, not a fact; 12 looks right for most cycles.
+    /// so this is a choice, not a fact; 15 looks right for most cycles.
     /// </summary>
-    public double AnimationFps { get; set; } = 12.0;
+    public double AnimationFps { get; set; } = 15.0;
+
+    /// <summary>
+    /// How overlays and animations are rendered against the scene background:
+    /// <c>"no"</c> (checkerboard), <c>"yes"</c> (color background), <c>"greyed"</c> (grayscale background).
+    /// </summary>
+    public string BackgroundMode { get; set; } = "yes";
 
     /// <summary>Draw overlays and animation frames on top of their scene's background, at their real screen position.</summary>
-    public bool ShowOnBackground { get; set; } = true;
+    public bool ShowOnBackground
+    {
+        get => !string.Equals(BackgroundMode, "no", StringComparison.OrdinalIgnoreCase);
+        set => BackgroundMode = value ? (string.Equals(BackgroundMode, "no", StringComparison.OrdinalIgnoreCase) ? "yes" : BackgroundMode) : "no";
+    }
 
     /// <summary>When exporting an animation, also write one PNG per frame next to the APNG.</summary>
     public bool ExportAnimationFrames { get; set; } = true;
@@ -48,6 +58,9 @@ public sealed class AppSettings
 
     /// <summary>UI theme: <c>System</c>, <c>Light</c>, or <c>Dark</c>. Maps to Avalonia's <c>ThemeVariant</c>.</summary>
     public string Theme { get; set; } = "Dark";
+
+    /// <summary>Application and metadata language: <c>en</c> (English) or <c>es</c> (Español).</summary>
+    public string Language { get; set; } = "en";
 
     /// <summary>The folder Export / Batch Export dialogs default to on next open. <c>null</c> means "let the OS pick".</summary>
     public string? LastExportDir { get; set; }
