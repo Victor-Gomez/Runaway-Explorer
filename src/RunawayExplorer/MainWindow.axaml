@@ -25,32 +25,33 @@
              which resolves at parse time. Entries are shown/hidden per right-clicked node in
              TreeContextMenu_Opening; see TreeContextActions for the rules. -->
         <ContextMenu x:Key="TreeItemContextMenu" Opening="TreeContextMenu_Opening">
-            <MenuItem x:Name="TreeMenuCopyPath" Header="_Copy Path" Click="TreeContextCopyPath_Click"/>
-            <MenuItem x:Name="TreeMenuReveal" Header="_Reveal in Explorer" Click="TreeContextRevealInExplorer_Click"
-                      ToolTip.Tip="Show the archive or file on disk."/>
+            <MenuItem x:Name="TreeMenuCopyPath" Header="{DynamicResource ContextMenu_CopyPath}" Click="TreeContextCopyPath_Click"/>
+            <MenuItem x:Name="TreeMenuReveal" Header="{DynamicResource ContextMenu_Reveal}" Click="TreeContextRevealInExplorer_Click"
+                      ToolTip.Tip="{DynamicResource ToolTip_Reveal}"/>
             <Separator x:Name="TreeMenuExportSeparator"/>
-            <MenuItem x:Name="TreeMenuExportItem" Header="_Export This Item..." Click="TreeContextExportItem_Click"
-                      ToolTip.Tip="Export the decoded entry (images to PNG, animations to APNG, sounds to WAV, videos to BIK)."/>
-            <MenuItem x:Name="TreeMenuExportRaw" Header="Export Ra_w..." Click="TreeContextExportRaw_Click"
-                      ToolTip.Tip="Write the entry's bytes verbatim, as stored in the archive."/>
-            <MenuItem x:Name="TreeMenuBatchExport" Header="_Batch Export This Folder..." Click="TreeContextBatchExport_Click"
-                      ToolTip.Tip="Recursively export every recognised entry under this folder."/>
+            <MenuItem x:Name="TreeMenuExportItem" Header="{DynamicResource ContextMenu_ExportItem}" Click="TreeContextExportItem_Click"
+                      ToolTip.Tip="{DynamicResource ToolTip_ExportItem}"/>
+            <MenuItem x:Name="TreeMenuExportRaw" Header="{DynamicResource ContextMenu_ExportRaw}" Click="TreeContextExportRaw_Click"
+                      ToolTip.Tip="{DynamicResource ToolTip_ExportRaw}"/>
+            <MenuItem x:Name="TreeMenuBatchExport" Header="{DynamicResource ContextMenu_BatchExport}" Click="TreeContextBatchExport_Click"
+                      ToolTip.Tip="{DynamicResource ToolTip_BatchExport}"/>
         </ContextMenu>
 
         <!-- Preview canvas menu. Entries are shown/hidden per loaded resource in PreviewContextMenu_Opening. -->
         <ContextMenu x:Key="PreviewContextMenu" Opening="PreviewContextMenu_Opening">
-            <MenuItem x:Name="PreviewMenuZoomIn" Header="Zoom _In" Click="PreviewZoomIn_Click" InputGesture="Ctrl+OemPlus"/>
-            <MenuItem x:Name="PreviewMenuZoomOut" Header="Zoom _Out" Click="PreviewZoomOut_Click" InputGesture="Ctrl+OemMinus"/>
-            <MenuItem x:Name="PreviewMenuFit" Header="_Fit to Window" Click="PreviewResetZoom_Click" InputGesture="Ctrl+D0"/>
-            <MenuItem x:Name="PreviewMenuCopySelection" Header="_Copy Selection" Click="PreviewCopySelection_Click"/>
-            <MenuItem x:Name="PreviewMenuCopyText" Header="Copy _All Text" Click="PreviewCopyAllText_Click"/>
-            <MenuItem x:Name="PreviewMenuOpenExternal" Header="Open in _External Player" Click="OpenExternalButton_Click"/>
+            <MenuItem x:Name="PreviewMenuZoomIn" Header="{DynamicResource ContextMenu_ZoomIn}" Click="PreviewZoomIn_Click" InputGesture="Ctrl+OemPlus"/>
+            <MenuItem x:Name="PreviewMenuZoomOut" Header="{DynamicResource ContextMenu_ZoomOut}" Click="PreviewZoomOut_Click" InputGesture="Ctrl+OemMinus"/>
+            <MenuItem x:Name="PreviewMenuFit" Header="{DynamicResource ContextMenu_Fit}" Click="PreviewResetZoom_Click" InputGesture="Ctrl+D0"/>
+            <MenuItem x:Name="PreviewMenuZoom100" Header="{DynamicResource ContextMenu_Zoom100}" Click="PreviewZoom100_Click" InputGesture="Ctrl+D1"/>
+            <MenuItem x:Name="PreviewMenuCopySelection" Header="{DynamicResource ContextMenu_CopySelection}" Click="PreviewCopySelection_Click"/>
+            <MenuItem x:Name="PreviewMenuCopyText" Header="{DynamicResource ContextMenu_CopyText}" Click="PreviewCopyAllText_Click"/>
+            <MenuItem x:Name="PreviewMenuOpenExternal" Header="{DynamicResource ContextMenu_OpenExternal}" Click="OpenExternalButton_Click"/>
             <Separator x:Name="PreviewMenuViewSeparator"/>
-            <MenuItem x:Name="PreviewMenuExport" Header="_Export..." Click="Export_Click" InputGesture="Ctrl+E"/>
-            <MenuItem x:Name="PreviewMenuExportRaw" Header="Export Ra_w..." Click="ExportRaw_Click"/>
+            <MenuItem x:Name="PreviewMenuExport" Header="{DynamicResource Menu_Export}" Click="Export_Click" InputGesture="Ctrl+E"/>
+            <MenuItem x:Name="PreviewMenuExportRaw" Header="{DynamicResource Menu_ExportRaw}" Click="ExportRaw_Click"/>
             <Separator x:Name="PreviewMenuPathSeparator"/>
-            <MenuItem x:Name="PreviewMenuCopyPath" Header="Copy _Path" Click="PreviewCopyPath_Click"/>
-            <MenuItem x:Name="PreviewMenuReveal" Header="Reveal in Explore_r" Click="PreviewReveal_Click"/>
+            <MenuItem x:Name="PreviewMenuCopyPath" Header="{DynamicResource ContextMenu_CopyPath}" Click="PreviewCopyPath_Click"/>
+            <MenuItem x:Name="PreviewMenuReveal" Header="{DynamicResource ContextMenu_Reveal}" Click="PreviewReveal_Click"/>
         </ContextMenu>
     </Window.Resources>
 
@@ -76,32 +77,36 @@
     <Grid>
     <DockPanel>
         <Menu DockPanel.Dock="Top">
-            <MenuItem Header="_File">
-                <MenuItem Header="_Select Runaway Install Folder..." Click="SelectFolder_Click" InputGesture="Ctrl+O"/>
-                <MenuItem x:Name="RecentInstallsMenu" Header="Open _Recent"/>
-                <MenuItem Header="_Export..." Click="Export_Click" InputGesture="Ctrl+E"/>
-                <MenuItem Header="Export _Raw..." Click="ExportRaw_Click"/>
-                <MenuItem Header="_Batch Export Folder..." Click="BatchExport_Click"
-                          ToolTip.Tip="Recursively export every recognised entry under the selected folder into a chosen output directory."/>
+            <MenuItem Header="{DynamicResource Menu_File}">
+                <MenuItem Header="{DynamicResource Menu_SelectFolder}" Click="SelectFolder_Click" InputGesture="Ctrl+O"/>
+                <MenuItem x:Name="RecentInstallsMenu" Header="{DynamicResource Menu_OpenRecent}"/>
+                <MenuItem Header="{DynamicResource Menu_Export}" Click="Export_Click" InputGesture="Ctrl+E"/>
+                <MenuItem Header="{DynamicResource Menu_ExportRaw}" Click="ExportRaw_Click"/>
+                <MenuItem Header="{DynamicResource Menu_BatchExport}" Click="BatchExport_Click"
+                          ToolTip.Tip="{DynamicResource ToolTip_BatchExportMenu}"/>
                 <Separator/>
-                <MenuItem Header="E_xit" Click="Exit_Click"/>
+                <MenuItem Header="{DynamicResource Menu_Exit}" Click="Exit_Click"/>
             </MenuItem>
-            <MenuItem Header="_Options">
-                <MenuItem x:Name="AutoPlaySoundMenuItem" Header="_Auto-play Sound" ToggleType="CheckBox" Click="AutoPlaySound_Click"/>
-                <MenuItem x:Name="AutoPlayVideoMenuItem" Header="Auto-play _Video" ToggleType="CheckBox" Click="AutoPlayVideo_Click"/>
-                <MenuItem x:Name="LoopSoundMenuItem" Header="Loop _Sound Playback" ToggleType="CheckBox" Click="LoopSound_Click"/>
-                <MenuItem x:Name="ShowOnBackgroundMenuItem" Header="Show on Scene _Background" ToggleType="CheckBox" Click="ShowOnBackground_Click"
-                          ToolTip.Tip="Draw overlays and animation frames on their scene's background, at their real screen position (B)."/>
+            <MenuItem Header="{DynamicResource Menu_Options}">
+                <MenuItem x:Name="AutoPlaySoundMenuItem" Header="{DynamicResource Menu_AutoPlaySound}" ToggleType="CheckBox" Click="AutoPlaySound_Click"/>
+                <MenuItem x:Name="AutoPlayVideoMenuItem" Header="{DynamicResource Menu_AutoPlayVideo}" ToggleType="CheckBox" Click="AutoPlayVideo_Click"/>
+                <MenuItem x:Name="LoopSoundMenuItem" Header="{DynamicResource Menu_LoopSound}" ToggleType="CheckBox" Click="LoopSound_Click"/>
+                <MenuItem x:Name="ShowOnBackgroundMenuItem" Header="{DynamicResource Menu_ShowOnBackground}"
+                          ToolTip.Tip="{DynamicResource ToolTip_ShowOnBackground}">
+                    <MenuItem x:Name="BackgroundNoMenuItem" Header="{DynamicResource Option_BackgroundNo}" ToggleType="Radio" Click="BackgroundNo_Click"/>
+                    <MenuItem x:Name="BackgroundYesMenuItem" Header="{DynamicResource Option_BackgroundYes}" ToggleType="Radio" Click="BackgroundYes_Click"/>
+                    <MenuItem x:Name="BackgroundGreyedMenuItem" Header="{DynamicResource Option_BackgroundGreyed}" ToggleType="Radio" Click="BackgroundGreyed_Click"/>
+                </MenuItem>
                 <Separator/>
-                <MenuItem Header="_Settings..." Click="OpenSettings_Click" InputGesture="Ctrl+OemComma"/>
+                <MenuItem Header="{DynamicResource Menu_Settings}" Click="OpenSettings_Click" InputGesture="Ctrl+OemComma"/>
             </MenuItem>
-            <MenuItem Header="_Help">
-                <MenuItem Header="_Check for Updates..." Click="CheckForUpdates_Click"
-                          ToolTip.Tip="Ask GitHub whether a newer release exists. Nothing is downloaded or installed automatically."/>
-                <MenuItem Header="_Keyboard Shortcuts" Click="Shortcuts_Click" InputGesture="F1"/>
+            <MenuItem Header="{DynamicResource Menu_Help}">
+                <MenuItem Header="{DynamicResource Menu_CheckUpdates}" Click="CheckForUpdates_Click"
+                          ToolTip.Tip="{DynamicResource ToolTip_CheckUpdates}"/>
+                <MenuItem Header="{DynamicResource Menu_Shortcuts}" Click="Shortcuts_Click" InputGesture="F1"/>
                 <MenuItem Header="Open _Log File" Click="OpenLogFile_Click"/>
                 <Separator/>
-                <MenuItem Header="_About Runaway Explorer..." Click="About_Click"/>
+                <MenuItem Header="{DynamicResource Menu_About}" Click="About_Click"/>
             </MenuItem>
         </Menu>
 
@@ -159,6 +164,7 @@
                     </ComboBox>
                     <Grid>
                         <TextBox x:Name="SearchBox" Padding="24,3,4,3"
+                                 Watermark="{DynamicResource Filter_Placeholder}"
                                  ToolTip.Tip="Filter the tree by entry name (e.g. H09, e07, VOICE_0012)."
                                  TextChanged="SearchBox_TextChanged"/>
                         <Image Source="{StaticResource SearchIcon}" Width="14" Height="14"
@@ -179,29 +185,70 @@
                 <DockPanel x:Name="ImagePanel" IsVisible="False">
                     <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
                         <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right">
-                            <ToggleButton x:Name="ImageBackgroundToggle" Classes="pill" IsVisible="False"
-                                          Checked="ImageBackgroundToggle_Changed" Unchecked="ImageBackgroundToggle_Changed"
-                                          ToolTip.Tip="Draw on the scene background at the real screen position (B).">
-                                <StackPanel Orientation="Horizontal">
-                                    <Image Source="{StaticResource ModLayersIcon}" Width="14" Height="14" Margin="0,0,4,0"/>
-                                    <TextBlock Text="On background" VerticalAlignment="Center"/>
-                                </StackPanel>
-                            </ToggleButton>
-                            <Button Classes="tool" Width="32" Margin="0,0,6,0" Click="ImageResetZoom_Click" ToolTip.Tip="Fit to window">
-                                <Image Source="{StaticResource FitToWindowIcon}" Width="16" Height="16"/>
+                            <StackPanel x:Name="ImageBackgroundGroup" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0" IsVisible="False">
+                                <Image Source="{StaticResource ModLayersIcon}" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="{DynamicResource Label_Background}" VerticalAlignment="Center" Margin="0,0,6,0" Opacity="0.85"/>
+                                <Border Classes="segmented" VerticalAlignment="Center" ToolTip.Tip="{DynamicResource ToolTip_ShowOnBackground}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <RadioButton x:Name="ImageBgNoRadio" Classes="segment" GroupName="ImageBgGroup"
+                                                     Content="{DynamicResource Option_BackgroundNo}" Click="ImageBgRadio_Click" Tag="no"/>
+                                        <RadioButton x:Name="ImageBgYesRadio" Classes="segment" GroupName="ImageBgGroup"
+                                                     Content="{DynamicResource Option_BackgroundYes}" Click="ImageBgRadio_Click" Tag="yes"/>
+                                        <RadioButton x:Name="ImageBgGreyedRadio" Classes="segment" GroupName="ImageBgGroup"
+                                                     Content="{DynamicResource Option_BackgroundGreyed}" Click="ImageBgRadio_Click" Tag="greyed"/>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                            <Button Classes="zoomBtn" Width="32" Margin="0,0,4,0" Click="ImageResetZoom_Click" ToolTip.Tip="{DynamicResource Toolbar_ZoomFit}">
+                                <Image Source="{StaticResource FitToWindowIcon}" Width="14" Height="14"/>
                             </Button>
-                            <TextBlock x:Name="ImageZoomLabel" VerticalAlignment="Center" Opacity="0.75" Margin="0,0,10,0" MinWidth="42" TextAlignment="Right"/>
-                            <Button Classes="tool" Margin="0,0,4,0" Click="ImageZoomOut_Click" ToolTip.Tip="Zoom out">
+                            <Button Classes="zoomBtn" Width="46" Margin="0,0,10,0" Click="ImageZoom100_Click" ToolTip.Tip="{DynamicResource Toolbar_Zoom100}">
+                                <TextBlock Text="100%" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                            </Button>
+                            <Button Classes="tool" Margin="0,0,4,0" Click="ImageZoomOut_Click" ToolTip.Tip="{DynamicResource Toolbar_ZoomOut}">
                                 <Image Source="{StaticResource ZoomOutIcon}" Width="14" Height="14"/>
                             </Button>
                             <Slider x:Name="ImageZoomSlider" Width="140" VerticalAlignment="Center"
                                     Minimum="10" Maximum="800" Value="100" SmallChange="10" LargeChange="50"/>
-                            <Button Classes="tool" Margin="4,0,0,0" Click="ImageZoomIn_Click" ToolTip.Tip="Zoom in">
+                            <Button Classes="tool" Margin="4,0,8,0" Click="ImageZoomIn_Click" ToolTip.Tip="{DynamicResource Toolbar_ZoomIn}">
                                 <Image Source="{StaticResource ZoomInIcon}" Width="14" Height="14"/>
                             </Button>
+                            <TextBlock x:Name="ImageZoomLabel" VerticalAlignment="Center" Opacity="0.75" MinWidth="42" TextAlignment="Left"
+                                       Cursor="Hand" ToolTip.Tip="{DynamicResource Toolbar_Zoom100}" PointerPressed="ImageZoomLabel_PointerPressed"/>
                         </StackPanel>
                         <TextBlock x:Name="ImageInfoText" VerticalAlignment="Center" Opacity="0.75" TextTrimming="CharacterEllipsis"/>
                     </DockPanel>
+                    <!-- Right sidebar for Scene Overlays checklist (visible in scene view when overlays exist) -->
+                    <Border x:Name="SceneOverlaysPanel" DockPanel.Dock="Right" Width="240" Margin="8,0,0,0"
+                            Background="#18181f" BorderBrush="#2a2a35" BorderThickness="1" CornerRadius="6"
+                            IsVisible="False">
+                        <DockPanel Margin="10">
+                            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                                <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" VerticalAlignment="Center">
+                                    <Button Classes="zoomBtn" Width="36" Height="22" Padding="0" Content="{DynamicResource SceneOverlays_All}"
+                                            Margin="0,0,4,0" FontSize="11" Click="SceneOverlaysSelectAll_Click" ToolTip.Tip="Select all overlays"/>
+                                    <Button Classes="zoomBtn" Width="44" Height="22" Padding="0" Content="{DynamicResource SceneOverlays_None}"
+                                            FontSize="11" Click="SceneOverlaysSelectNone_Click" ToolTip.Tip="Deselect all overlays"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Image Source="{StaticResource ModLayersIcon}" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="SceneOverlaysTitle" Text="{DynamicResource SceneOverlays_Title}" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </DockPanel>
+                            <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                                <ItemsControl x:Name="SceneOverlaysItemsControl">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <CheckBox Margin="0,2,0,2" IsChecked="{Binding IsChecked, Mode=TwoWay}">
+                                                <TextBlock Text="{Binding DisplayName}" FontSize="11" TextTrimming="CharacterEllipsis"/>
+                                            </CheckBox>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </DockPanel>
+                    </Border>
+
                     <ScrollViewer x:Name="ImageScrollViewer"
                                   HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
                         <Grid MinWidth="{Binding #ImageScrollViewer.Viewport.Width}"
@@ -210,6 +257,7 @@
                                 <Canvas x:Name="ImageStage" ClipToBounds="True">
                                     <Image x:Name="ImageBackground" Canvas.Left="0" Canvas.Top="0" Stretch="None"
                                            RenderOptions.BitmapInterpolationMode="None"/>
+                                    <Canvas x:Name="SceneOverlayLayer" Canvas.Left="0" Canvas.Top="0"/>
                                     <Image x:Name="PreviewImage" Canvas.Left="0" Canvas.Top="0" Stretch="None"
                                            RenderOptions.BitmapInterpolationMode="None"/>
                                 </Canvas>
@@ -223,26 +271,36 @@
                 <DockPanel x:Name="AnimationPanel" IsVisible="False">
                     <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
                         <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right">
-                            <ToggleButton x:Name="AnimBackgroundToggle" Classes="pill"
-                                          Checked="AnimBackgroundToggle_Changed" Unchecked="AnimBackgroundToggle_Changed"
-                                          ToolTip.Tip="Draw on the scene background at the real screen position (B).">
-                                <StackPanel Orientation="Horizontal">
-                                    <Image Source="{StaticResource ModLayersIcon}" Width="14" Height="14" Margin="0,0,4,0"/>
-                                    <TextBlock Text="On background" VerticalAlignment="Center"/>
-                                </StackPanel>
-                            </ToggleButton>
-                            <Button Classes="tool" Width="32" Margin="0,0,6,0" Click="AnimResetZoom_Click" ToolTip.Tip="Fit to window">
-                                <Image Source="{StaticResource FitToWindowIcon}" Width="16" Height="16"/>
+                            <StackPanel x:Name="AnimBackgroundGroup" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0">
+                                <Image Source="{StaticResource ModLayersIcon}" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="{DynamicResource Label_Background}" VerticalAlignment="Center" Margin="0,0,6,0" Opacity="0.85"/>
+                                <Border Classes="segmented" VerticalAlignment="Center" ToolTip.Tip="{DynamicResource ToolTip_ShowOnBackground}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <RadioButton x:Name="AnimBgNoRadio" Classes="segment" GroupName="AnimBgGroup"
+                                                     Content="{DynamicResource Option_BackgroundNo}" Click="AnimBgRadio_Click" Tag="no"/>
+                                        <RadioButton x:Name="AnimBgYesRadio" Classes="segment" GroupName="AnimBgGroup"
+                                                     Content="{DynamicResource Option_BackgroundYes}" Click="AnimBgRadio_Click" Tag="yes"/>
+                                        <RadioButton x:Name="AnimBgGreyedRadio" Classes="segment" GroupName="AnimBgGroup"
+                                                     Content="{DynamicResource Option_BackgroundGreyed}" Click="AnimBgRadio_Click" Tag="greyed"/>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                            <Button Classes="zoomBtn" Width="32" Margin="0,0,4,0" Click="AnimResetZoom_Click" ToolTip.Tip="{DynamicResource Toolbar_ZoomFit}">
+                                <Image Source="{StaticResource FitToWindowIcon}" Width="14" Height="14"/>
                             </Button>
-                            <TextBlock x:Name="AnimZoomLabel" VerticalAlignment="Center" Opacity="0.75" Margin="0,0,10,0" MinWidth="42" TextAlignment="Right"/>
-                            <Button Classes="tool" Margin="0,0,4,0" Click="AnimZoomOut_Click" ToolTip.Tip="Zoom out">
+                            <Button Classes="zoomBtn" Width="46" Margin="0,0,10,0" Click="AnimZoom100_Click" ToolTip.Tip="{DynamicResource Toolbar_Zoom100}">
+                                <TextBlock Text="100%" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                            </Button>
+                            <Button Classes="tool" Margin="0,0,4,0" Click="AnimZoomOut_Click" ToolTip.Tip="{DynamicResource Toolbar_ZoomOut}">
                                 <Image Source="{StaticResource ZoomOutIcon}" Width="14" Height="14"/>
                             </Button>
                             <Slider x:Name="AnimZoomSlider" Width="140" VerticalAlignment="Center"
                                     Minimum="10" Maximum="800" Value="100" SmallChange="10" LargeChange="50"/>
-                            <Button Classes="tool" Margin="4,0,0,0" Click="AnimZoomIn_Click" ToolTip.Tip="Zoom in">
+                            <Button Classes="tool" Margin="4,0,8,0" Click="AnimZoomIn_Click" ToolTip.Tip="{DynamicResource Toolbar_ZoomIn}">
                                 <Image Source="{StaticResource ZoomInIcon}" Width="14" Height="14"/>
                             </Button>
+                            <TextBlock x:Name="AnimZoomLabel" VerticalAlignment="Center" Opacity="0.75" MinWidth="42" TextAlignment="Left"
+                                       Cursor="Hand" ToolTip.Tip="{DynamicResource Toolbar_Zoom100}" PointerPressed="AnimZoomLabel_PointerPressed"/>
                         </StackPanel>
                         <TextBlock x:Name="AnimInfoText" VerticalAlignment="Center" Opacity="0.75" TextTrimming="CharacterEllipsis"/>
                     </DockPanel>
@@ -340,11 +398,15 @@
                     <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
                         <TextBlock x:Name="VideoLabel" TextWrapping="Wrap" FontSize="14"/>
                         <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right">
-                            <TextBlock x:Name="VideoZoomLabel" VerticalAlignment="Center" Opacity="0.7" Margin="0,0,10,0" MinWidth="42"/>
+                            <Button Classes="zoomBtn" Width="46" Margin="0,0,10,0" Click="VideoZoom100_Click" ToolTip.Tip="{DynamicResource Toolbar_Zoom100}">
+                                <TextBlock Text="100%" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                            </Button>
                             <Slider x:Name="VideoZoomSlider" Width="180" VerticalAlignment="Center"
                                     Minimum="25" Maximum="800" Value="100"
                                     SmallChange="10" LargeChange="50"
                                     ValueChanged="VideoZoomSlider_ValueChanged"/>
+                            <TextBlock x:Name="VideoZoomLabel" VerticalAlignment="Center" Opacity="0.7" Margin="8,0,0,0" MinWidth="42"
+                                       Cursor="Hand" ToolTip.Tip="{DynamicResource Toolbar_Zoom100}" PointerPressed="VideoZoomLabel_PointerPressed"/>
                         </StackPanel>
                     </DockPanel>
                     <StackPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
@@ -387,5 +449,7 @@
 
         <!-- In-app settings overlay: sits on top of the whole DockPanel (menu bar included). -->
         <views:SettingsPanel x:Name="SettingsOverlay" IsVisible="False" Focusable="True"/>
+        <!-- In-app animation export format prompt overlay -->
+        <views:AnimationExportOverlay x:Name="AnimationExportOverlay" IsVisible="False" Focusable="True"/>
     </Grid>
 </Window>

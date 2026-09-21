@@ -76,7 +76,7 @@ public partial class MainWindow : Window
         _videoPositionTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
         _videoPositionTimer.Tick += VideoPositionTimer_Tick;
 
-        _animTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1000.0 / 12) };
+        _animTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1000.0 / 15) };
         _animTimer.Tick += AnimTimer_Tick;
 
         _searchDebounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
@@ -86,7 +86,7 @@ public partial class MainWindow : Window
             _ = ApplyTreeFilterAsync();
         };
 
-        TypeFilterCombo.ItemsSource = ResourceTypeFilter.Categories;
+        TypeFilterCombo.ItemsSource = ResourceTypeFilter.GetCategories(_settings.Language);
         TypeFilterCombo.SelectedIndex = 0;
 
         InitializeOptionsMenu();
@@ -192,6 +192,23 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (AnimationExportOverlay.IsVisible)
+        {
+            if (e.Key == Key.Escape)
+            {
+                AnimationExportOverlay.Dismiss(AnimationExportFormat.Cancel);
+                e.Handled = true;
+                return;
+            }
+            if (e.Key == Key.Enter)
+            {
+                AnimationExportOverlay.Confirm();
+                e.Handled = true;
+                return;
+            }
+            return;
+        }
+
         if (ctrl && e.Key == Key.O)
         {
             SelectFolder_Click(this, new RoutedEventArgs());
@@ -233,6 +250,11 @@ public partial class MainWindow : Window
             PreviewResetZoom_Click(this, new RoutedEventArgs());
             e.Handled = true;
         }
+        else if (ctrl && e.Key is Key.D1 or Key.NumPad1)
+        {
+            PreviewZoom100_Click(this, new RoutedEventArgs());
+            e.Handled = true;
+        }
         else if (e.Key == Key.F1)
         {
             ShowShortcutsCheatSheet();
@@ -250,9 +272,9 @@ public partial class MainWindow : Window
                 return;
             e.Handled = true;
         }
-        else if (!typing && e.Key == Key.B && (ImageBackgroundToggle.IsVisible && ImagePanel.IsVisible || AnimationPanel.IsVisible))
+        else if (!typing && e.Key == Key.B && (ImageBackgroundGroup.IsVisible && ImagePanel.IsVisible || AnimationPanel.IsVisible))
         {
-            ToggleShowOnBackground();
+            CycleBackgroundMode();
             e.Handled = true;
         }
         else if (!typing && AnimationPanel.IsVisible && e.Key is Key.Left or Key.Right or Key.Home or Key.End)
@@ -436,7 +458,8 @@ public partial class MainWindow : Window
             VirtualFileSystem vfs = await Task.Run(() => VirtualFileSystem.Init(
                 baseDir,
                 text => Dispatcher.UIThread.Post(() => SetStatus(text)),
-                cache));
+                cache,
+                language: _settings.Language));
 
             _vfs = vfs;
             var rootVm = new FsNodeViewModel(vfs.Root, vfs) { IsExpanded = true };
@@ -677,24 +700,56 @@ public partial class MainWindow : Window
 
     private async Task ExportAnimationAsync(SpriteAsset asset, string defaultName)
     {
-        string? path = await Dialogs.ShowSaveFileDialog(this, "Export Animation (APNG)", defaultName,
-            [new FilePickerFileType("Animated PNG") { Patterns = ["*.png"] }], _settings.LastExportDir);
-        if (path is null)
+        AnimationExportFormat format = await AnimationExportOverlay.ShowAsync();
+        if (format == AnimationExportFormat.Cancel)
             return;
 
-        double fps = _settings.AnimationFps;
-        bool frames = _settings.ExportAnimationFrames;
-        try
+        if (format == AnimationExportFormat.Apng)
         {
-            (int total, int written) = await Task.Run(() => BatchExporter.ExportAnimation(asset, path, fps, frames));
-            RememberExportFolder(path);
-            SetStatus(frames
-                ? $"Exported {path} ({total} frames at {fps:0.#} fps) and {written} frame PNG(s) next to it."
-                : $"Exported {path} ({total} frames at {fps:0.#} fps).");
+            string title = LocalizationManager.Instance.GetString("ExportAnim_SaveApng_Title", "Export Animation (APNG)");
+            string? path = await Dialogs.ShowSaveFileDialog(this, title, defaultName,
+                [new FilePickerFileType("Animated PNG") { Patterns = ["*.png"] }], _settings.LastExportDir);
+            if (path is null)
+                return;
+
+            double fps = _settings.AnimationFps;
+            bool frames = _settings.ExportAnimationFrames;
+            try
+            {
+                (int total, int written) = await Task.Run(() => BatchExporter.ExportAnimation(asset, path, fps, frames));
+                RememberExportFolder(path);
+                SetStatus(frames
+                    ? $"Exported {path} ({total} frames at {fps:0.#} fps) and {written} frame PNG(s) next to it."
+                    : $"Exported {path} ({total} frames at {fps:0.#} fps).");
+            }
+            catch (Exception ex)
+            {
+                await Dialogs.ShowMessageBox(this, $"Export failed:\n{ex.Message}", "Runaway Explorer", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
-        catch (Exception ex)
+        else if (format == AnimationExportFormat.ImageSequence)
         {
-            await Dialogs.ShowMessageBox(this, $"Export failed:\n{ex.Message}", "Runaway Explorer", MessageBoxButton.OK, MessageBoxImage.Error);
+            string stem = Path.GetFileNameWithoutExtension(defaultName);
+            string title = LocalizationManager.Instance.GetString("ExportAnim_SaveSequence_Title", "Select Destination Folder for Image Sequence");
+            string? folder = await Dialogs.ShowOpenFolderDialog(this, title, _settings.LastExportDir);
+            if (folder is null)
+                return;
+
+            try
+            {
+                string targetDir = Path.GetFileName(folder).Equals(stem, StringComparison.OrdinalIgnoreCase)
+                    || Path.GetFileName(folder).Equals(stem + "_frames", StringComparison.OrdinalIgnoreCase)
+                    ? folder
+                    : Path.Combine(folder, stem + "_frames");
+
+                int written = await Task.Run(() => BatchExporter.ExportImageSequence(asset, targetDir));
+                RememberExportFolder(folder);
+                SetStatus($"Exported {written} frame(s) to {targetDir}");
+            }
+            catch (Exception ex)
+            {
+                await Dialogs.ShowMessageBox(this, $"Export failed:\n{ex.Message}", "Runaway Explorer", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
     }
 
@@ -1031,6 +1086,7 @@ public partial class MainWindow : Window
         PreviewMenuZoomIn.IsVisible = actions.Zoom;
         PreviewMenuZoomOut.IsVisible = actions.Zoom;
         PreviewMenuFit.IsVisible = actions.Zoom;
+        PreviewMenuZoom100.IsVisible = actions.Zoom;
         PreviewMenuCopySelection.IsVisible = actions.CopyText;
         PreviewMenuCopyText.IsVisible = actions.CopyText;
         PreviewMenuOpenExternal.IsVisible = actions.OpenExternally;
@@ -1049,6 +1105,8 @@ public partial class MainWindow : Window
     private void PreviewZoomOut_Click(object? sender, RoutedEventArgs e) => ActiveZoom?.Out();
 
     private void PreviewResetZoom_Click(object? sender, RoutedEventArgs e) => ActiveZoom?.Fit();
+
+    private void PreviewZoom100_Click(object? sender, RoutedEventArgs e) => ActiveZoom?.Zoom100();
 
     private async void PreviewCopySelection_Click(object? sender, RoutedEventArgs e)
     {
@@ -1086,12 +1144,13 @@ public partial class MainWindow : Window
         AutoPlaySoundMenuItem.IsChecked = _settings.AutoPlaySound;
         AutoPlayVideoMenuItem.IsChecked = _settings.AutoPlayVideo;
         LoopSoundMenuItem.IsChecked = _settings.LoopSoundPlayback;
-        ShowOnBackgroundMenuItem.IsChecked = _settings.ShowOnBackground;
+        UpdateMenuBackgroundChecks();
         AnimLoopCheck.IsChecked = _settings.LoopAnimation;
         AnimFpsBox.Value = (decimal)_settings.AnimationFps;
         _animTimer.Interval = TimeSpan.FromMilliseconds(1000.0 / Math.Max(1, _settings.AnimationFps));
         RefreshRecentInstallsMenu();
         ApplyTheme(_settings.Theme);
+        ApplyLanguage(_settings.Language);
     }
 
     internal void ApplyTheme(string theme)
@@ -1102,6 +1161,27 @@ public partial class MainWindow : Window
             "System" => Avalonia.Styling.ThemeVariant.Default,
             _ => Avalonia.Styling.ThemeVariant.Dark,
         };
+    }
+
+    internal void ApplyLanguage(string language)
+    {
+        _settings.Language = language;
+        _settings.Save();
+        LocalizationManager.Instance.SetLanguage(language);
+
+        if (_vfs is not null)
+        {
+            _vfs.ApplyLanguage(language);
+            if (Tree.ItemsSource is IEnumerable<FsNodeViewModel> roots)
+            {
+                foreach (FsNodeViewModel root in roots)
+                    root.NotifyDisplayNameChanged();
+            }
+        }
+
+        int prevFilterIdx = TypeFilterCombo.SelectedIndex;
+        TypeFilterCombo.ItemsSource = ResourceTypeFilter.GetCategories(language);
+        TypeFilterCombo.SelectedIndex = Math.Max(0, prevFilterIdx);
     }
 
     private void OpenSettings_Click(object? sender, RoutedEventArgs e) => SettingsOverlay.Show(this, _settings);
@@ -1124,29 +1204,63 @@ public partial class MainWindow : Window
         _settings.Save();
     }
 
-    private void ShowOnBackground_Click(object? sender, RoutedEventArgs e)
+    private void BackgroundNo_Click(object? sender, RoutedEventArgs e) => SetBackgroundMode("no");
+    private void BackgroundYes_Click(object? sender, RoutedEventArgs e) => SetBackgroundMode("yes");
+    private void BackgroundGreyed_Click(object? sender, RoutedEventArgs e) => SetBackgroundMode("greyed");
+
+    private void SetBackgroundMode(string mode)
     {
-        _settings.ShowOnBackground = ShowOnBackgroundMenuItem.IsChecked;
+        if (string.Equals(_settings.BackgroundMode, mode, StringComparison.OrdinalIgnoreCase))
+            return;
+        _settings.BackgroundMode = mode;
         _settings.Save();
         OnShowOnBackgroundChanged();
     }
 
-    private void ToggleShowOnBackground()
+    private void CycleBackgroundMode()
     {
-        _settings.ShowOnBackground = !_settings.ShowOnBackground;
-        _settings.Save();
-        OnShowOnBackgroundChanged();
+        int currentIndex = BackgroundModeToIndex(_settings.BackgroundMode);
+        int nextIndex = (currentIndex + 1) % 3;
+        SetBackgroundMode(IndexToBackgroundMode(nextIndex));
+    }
+
+    private static int BackgroundModeToIndex(string mode) => mode.ToLowerInvariant() switch
+    {
+        "no" => 0,
+        "greyed" => 2,
+        _ => 1,
+    };
+
+    private static string IndexToBackgroundMode(int index) => index switch
+    {
+        0 => "no",
+        2 => "greyed",
+        _ => "yes",
+    };
+
+    private void UpdateMenuBackgroundChecks()
+    {
+        string mode = _settings.BackgroundMode.ToLowerInvariant();
+        BackgroundNoMenuItem.IsChecked = mode == "no";
+        BackgroundYesMenuItem.IsChecked = mode == "yes";
+        BackgroundGreyedMenuItem.IsChecked = mode == "greyed";
     }
 
     /// <summary>Called after the setting changed anywhere: re-sync every control that mirrors it and redraw the stage.</summary>
     internal void OnShowOnBackgroundChanged()
     {
-        ShowOnBackgroundMenuItem.IsChecked = _settings.ShowOnBackground;
+        UpdateMenuBackgroundChecks();
+        string mode = _settings.BackgroundMode.ToLowerInvariant();
         _syncingBackgroundToggles = true;
         try
         {
-            ImageBackgroundToggle.IsChecked = _settings.ShowOnBackground;
-            AnimBackgroundToggle.IsChecked = _settings.ShowOnBackground;
+            ImageBgNoRadio.IsChecked = mode == "no";
+            ImageBgYesRadio.IsChecked = mode == "yes";
+            ImageBgGreyedRadio.IsChecked = mode == "greyed";
+
+            AnimBgNoRadio.IsChecked = mode == "no";
+            AnimBgYesRadio.IsChecked = mode == "yes";
+            AnimBgGreyedRadio.IsChecked = mode == "greyed";
         }
         finally
         {
@@ -1466,6 +1580,10 @@ public partial class MainWindow : Window
         ImageBackground.Source = null;
         AnimFrameImage.Source = null;
         AnimBackground.Source = null;
+
+        SceneOverlayLayer.Children.Clear();
+        SceneOverlaysPanel.IsVisible = false;
+        SceneOverlaysItemsControl.ItemsSource = null;
     }
 
     private void ShowContent(ResourceContent content)
@@ -1512,30 +1630,40 @@ public partial class MainWindow : Window
 
     private bool _syncingBackgroundToggles;
     private Bitmap? _sceneBackgroundBitmap;
+    private Bitmap? _sceneBackgroundGrayscaleBitmap;
     private string? _sceneBackgroundArchive;
 
     /// <summary>The current scene's background as a bitmap, converted once per archive.</summary>
-    private Bitmap? SceneBackgroundBitmapFor(FsNode node)
+    private Bitmap? SceneBackgroundBitmapFor(FsNode? node, bool grayscale = false)
     {
-        if (_vfs is null)
+        if (node is null || _vfs is null)
             return null;
         string? archive = node.IsDirectory ? node.ArchivePath : node.Parent?.ArchivePath;
         if (archive is null)
             return null;
-        if (_sceneBackgroundArchive == archive)
-            return _sceneBackgroundBitmap;
+        if (_sceneBackgroundArchive != archive)
+        {
+            _sceneBackgroundArchive = archive;
+            DecodedImage? raw = _vfs.SceneBackgroundFor(node);
+            _sceneBackgroundBitmap = BitmapConverter.ToBitmap(raw);
+            _sceneBackgroundGrayscaleBitmap = BitmapConverter.ToBitmap(raw, grayscale: true);
+        }
 
-        _sceneBackgroundArchive = archive;
-        _sceneBackgroundBitmap = BitmapConverter.ToBitmap(_vfs.SceneBackgroundFor(node));
-        return _sceneBackgroundBitmap;
+        return grayscale ? _sceneBackgroundGrayscaleBitmap : _sceneBackgroundBitmap;
     }
 
     private void ShowImage(ImageResource image)
     {
         PreviewImage.Source = BitmapConverter.ToBitmap(image.Image);
-        ImageBackgroundToggle.IsVisible = image.Positioned;
+        ImageBackgroundGroup.IsVisible = image.Positioned;
+        string mode = _settings.BackgroundMode.ToLowerInvariant();
         _syncingBackgroundToggles = true;
-        try { ImageBackgroundToggle.IsChecked = _settings.ShowOnBackground; }
+        try
+        {
+            ImageBgNoRadio.IsChecked = mode == "no";
+            ImageBgYesRadio.IsChecked = mode == "yes";
+            ImageBgGreyedRadio.IsChecked = mode == "greyed";
+        }
         finally { _syncingBackgroundToggles = false; }
 
         LayoutImageStage(image);
@@ -1545,8 +1673,12 @@ public partial class MainWindow : Window
 
     private void LayoutImageStage(ImageResource image)
     {
-        Bitmap? background = image.Positioned && _settings.ShowOnBackground && _selectedNode is not null
-            ? SceneBackgroundBitmapFor(_selectedNode)
+        bool isMask = string.Equals(image.Kind, "scene mask", StringComparison.OrdinalIgnoreCase);
+        bool showBg = image.Positioned && !string.Equals(_settings.BackgroundMode, "no", StringComparison.OrdinalIgnoreCase) && _selectedNode is not null;
+        bool isGreyed = string.Equals(_settings.BackgroundMode, "greyed", StringComparison.OrdinalIgnoreCase);
+
+        Bitmap? background = showBg
+            ? SceneBackgroundBitmapFor(_selectedNode, isGreyed)
             : null;
 
         if (background is not null)
@@ -1558,7 +1690,11 @@ public partial class MainWindow : Window
             ImageStage.Height = Math.Max(background.PixelSize.Height, image.Y + image.Image.Height);
             Canvas.SetLeft(PreviewImage, image.X);
             Canvas.SetTop(PreviewImage, image.Y);
-            ImageInfoText.Text = $"{image.Kind} {image.Image.Width}×{image.Image.Height} at screen {image.X},{image.Y}, on the scene background";
+            PreviewImage.Opacity = isMask ? 0.55 : 1.0;
+            string bgDesc = isGreyed ? "greyed scene background" : "scene background";
+            ImageInfoText.Text = isMask
+                ? $"{image.Kind} {image.Image.Width}×{image.Image.Height}, overlay on the {bgDesc}"
+                : $"{image.Kind} {image.Image.Width}×{image.Image.Height} at screen {image.X},{image.Y}, on the {bgDesc}";
         }
         else
         {
@@ -1569,8 +1705,11 @@ public partial class MainWindow : Window
             ImageStage.Height = image.Image.Height;
             Canvas.SetLeft(PreviewImage, 0);
             Canvas.SetTop(PreviewImage, 0);
+            PreviewImage.Opacity = 1.0;
             ImageInfoText.Text = image.Positioned
-                ? $"{image.Kind} {image.Image.Width}×{image.Image.Height} at screen {image.X},{image.Y}"
+                ? (isMask
+                    ? $"{image.Kind} {image.Image.Width}×{image.Image.Height}"
+                    : $"{image.Kind} {image.Image.Width}×{image.Image.Height} at screen {image.X},{image.Y}")
                 : $"{image.Kind} {image.Image.Width}×{image.Image.Height}";
         }
 
@@ -1580,9 +1719,10 @@ public partial class MainWindow : Window
 
     private void ShowScene(SceneResource scene)
     {
-        ImageBackgroundToggle.IsVisible = false;
+        ImageBackgroundGroup.IsVisible = false;
         ImageBackground.Source = null;
         ImageBackground.IsVisible = false;
+        PreviewImage.Opacity = 1.0;
         if (scene.Background is { } bg)
         {
             PreviewImage.Source = BitmapConverter.ToBitmap(bg);
@@ -1601,22 +1741,113 @@ public partial class MainWindow : Window
         }
         Canvas.SetLeft(PreviewImage, 0);
         Canvas.SetTop(PreviewImage, 0);
+
+        // Composite overlay entries onto the scene canvas and populate the sidebar checklist.
+        PopulateSceneOverlays(scene);
+
         ImagePanel.IsVisible = true;
         _imageZoom.Fit();
     }
 
-    private void ImageBackgroundToggle_Changed(object? sender, RoutedEventArgs e)
+    /// <summary>
+    /// Finds every <see cref="EntryKind.Overlay"/> child in the scene archive, decodes it, places it on
+    /// <c>SceneOverlayLayer</c>, and fills the sidebar checklist so the user can toggle each one.
+    /// </summary>
+    private void PopulateSceneOverlays(SceneResource scene)
+    {
+        SceneOverlayLayer.Children.Clear();
+        if (_vfs is null)
+        {
+            SceneOverlaysPanel.IsVisible = false;
+            return;
+        }
+
+        var items = new List<SceneOverlayItem>();
+        VirtualFileSystem vfs = _vfs;
+        foreach (FsNode child in scene.Archive.Children)
+        {
+            if (child.Kind != EntryKind.Overlay)
+                continue;
+
+            try
+            {
+                byte[] data = vfs.ReadBytes(child);
+                if (OverlayDecoder.TryDecode(data) is not { } ov)
+                    continue;
+
+                Bitmap? bmp = BitmapConverter.ToBitmap(ov.Image);
+                if (bmp is null)
+                    continue;
+
+                var img = new Image
+                {
+                    Source = bmp,
+                    Stretch = Stretch.None,
+                };
+                RenderOptions.SetBitmapInterpolationMode(img, BitmapInterpolationMode.None);
+                Canvas.SetLeft(img, ov.Info.X);
+                Canvas.SetTop(img, ov.Info.Y);
+                SceneOverlayLayer.Children.Add(img);
+
+                string kind = ov.Info.IsRectangular ? "overlay (rect)" : "overlay";
+                var item = new SceneOverlayItem
+                {
+                    DisplayName = $"{child.Name}  {kind}",
+                    X = ov.Info.X,
+                    Y = ov.Info.Y,
+                    OverlayBitmap = bmp,
+                    CanvasImage = img,
+                };
+                items.Add(item);
+            }
+            catch (Exception ex)
+            {
+                Log.Exception($"Scene overlay '{child.GetPath()}'", ex);
+            }
+        }
+
+        if (items.Count > 0)
+        {
+            SceneOverlaysItemsControl.ItemsSource = items;
+            SceneOverlaysPanel.IsVisible = true;
+        }
+        else
+        {
+            SceneOverlaysPanel.IsVisible = false;
+        }
+    }
+
+    private void SceneOverlaysSelectAll_Click(object? sender, RoutedEventArgs e)
+    {
+        if (SceneOverlaysItemsControl.ItemsSource is IEnumerable<SceneOverlayItem> items)
+            foreach (var item in items)
+                item.IsChecked = true;
+    }
+
+    private void SceneOverlaysSelectNone_Click(object? sender, RoutedEventArgs e)
+    {
+        if (SceneOverlaysItemsControl.ItemsSource is IEnumerable<SceneOverlayItem> items)
+            foreach (var item in items)
+                item.IsChecked = false;
+    }
+
+    private void ImageBgRadio_Click(object? sender, RoutedEventArgs e)
     {
         if (_syncingBackgroundToggles)
             return;
-        _settings.ShowOnBackground = ImageBackgroundToggle.IsChecked == true;
-        _settings.Save();
-        OnShowOnBackgroundChanged();
+        if (sender is RadioButton { Tag: string mode })
+            SetBackgroundMode(mode);
     }
 
     private void ImageZoomIn_Click(object? sender, RoutedEventArgs e) => _imageZoom.In();
     private void ImageZoomOut_Click(object? sender, RoutedEventArgs e) => _imageZoom.Out();
     private void ImageResetZoom_Click(object? sender, RoutedEventArgs e) => _imageZoom.Fit();
+    private void ImageZoom100_Click(object? sender, RoutedEventArgs e) => _imageZoom.Zoom100();
+    private void ImageZoomLabel_PointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        _imageZoom.Zoom100();
+        e.Handled = true;
+    }
 
     // ---------------------------------------------------------------------------------------------
     // Animation viewer
@@ -1647,8 +1878,14 @@ public partial class MainWindow : Window
         AnimFrameImage.IsVisible = true;
         _animFrameIndex = 0;
 
+        string mode = _settings.BackgroundMode.ToLowerInvariant();
         _syncingBackgroundToggles = true;
-        try { AnimBackgroundToggle.IsChecked = _settings.ShowOnBackground; }
+        try
+        {
+            AnimBgNoRadio.IsChecked = mode == "no";
+            AnimBgYesRadio.IsChecked = mode == "yes";
+            AnimBgGreyedRadio.IsChecked = mode == "greyed";
+        }
         finally { _syncingBackgroundToggles = false; }
 
         _syncingScrub = true;
@@ -1682,7 +1919,10 @@ public partial class MainWindow : Window
             return;
 
         (int bx, int by, int bw, int bh) = _animAsset.Bounds;
-        Bitmap? background = _settings.ShowOnBackground && _selectedNode is not null ? SceneBackgroundBitmapFor(_selectedNode) : null;
+        bool showBg = !string.Equals(_settings.BackgroundMode, "no", StringComparison.OrdinalIgnoreCase) && _selectedNode is not null;
+        bool isGreyed = string.Equals(_settings.BackgroundMode, "greyed", StringComparison.OrdinalIgnoreCase);
+
+        Bitmap? background = showBg ? SceneBackgroundBitmapFor(_selectedNode, isGreyed) : null;
 
         if (background is not null)
         {
@@ -1693,7 +1933,8 @@ public partial class MainWindow : Window
             AnimStage.Height = Math.Max(background.PixelSize.Height, by + bh);
             Canvas.SetLeft(AnimBoundsRect, bx);
             Canvas.SetTop(AnimBoundsRect, by);
-            AnimInfoText.Text = $"{_animAsset.FrameCount} frames, bounding box {bw}×{bh} at screen {bx},{by}, on the scene background";
+            string bgDesc = isGreyed ? "greyed scene background" : "scene background";
+            AnimInfoText.Text = $"{_animAsset.FrameCount} frames, bounding box {bw}×{bh} at screen {bx},{by}, on the {bgDesc}";
         }
         else
         {
@@ -1886,18 +2127,23 @@ public partial class MainWindow : Window
         _animTimer.Interval = TimeSpan.FromMilliseconds(1000.0 / fps);
     }
 
-    private void AnimBackgroundToggle_Changed(object? sender, RoutedEventArgs e)
+    private void AnimBgRadio_Click(object? sender, RoutedEventArgs e)
     {
         if (_syncingBackgroundToggles)
             return;
-        _settings.ShowOnBackground = AnimBackgroundToggle.IsChecked == true;
-        _settings.Save();
-        OnShowOnBackgroundChanged();
+        if (sender is RadioButton { Tag: string mode })
+            SetBackgroundMode(mode);
     }
 
     private void AnimZoomIn_Click(object? sender, RoutedEventArgs e) => _animZoom.In();
     private void AnimZoomOut_Click(object? sender, RoutedEventArgs e) => _animZoom.Out();
     private void AnimResetZoom_Click(object? sender, RoutedEventArgs e) => _animZoom.Fit();
+    private void AnimZoom100_Click(object? sender, RoutedEventArgs e) => _animZoom.Zoom100();
+    private void AnimZoomLabel_PointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        _animZoom.Zoom100();
+        e.Handled = true;
+    }
 
     // ---------------------------------------------------------------------------------------------
     // Sound playback
@@ -2205,6 +2451,14 @@ public partial class MainWindow : Window
     {
         double factor = e.Delta.Y > 0 ? 1.25 : 1.0 / 1.25;
         VideoZoomSlider.Value = Math.Clamp(VideoZoomSlider.Value * factor, VideoZoomSlider.Minimum, VideoZoomSlider.Maximum);
+        e.Handled = true;
+    }
+
+    private void VideoZoom100_Click(object? sender, RoutedEventArgs e) => VideoZoomSlider.Value = 100;
+
+    private void VideoZoomLabel_PointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        VideoZoomSlider.Value = 100;
         e.Handled = true;
     }
 
