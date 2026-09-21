@@ -56,6 +56,9 @@ public sealed partial class AboutWindow : Window
     private void OpenRepo_Click(object? sender, RoutedEventArgs e) =>
         SystemBrowser.TryOpen(RepositoryUrls.Home(_settings.ReleaseFeedUrl));
 
+    private void OpenAuthor_Click(object? sender, RoutedEventArgs e) =>
+        SystemBrowser.TryOpen(RepositoryUrls.Author(_settings.ReleaseFeedUrl));
+
     private void OpenIssues_Click(object? sender, RoutedEventArgs e) =>
         SystemBrowser.TryOpen(RepositoryUrls.Issues(_settings.ReleaseFeedUrl));
 

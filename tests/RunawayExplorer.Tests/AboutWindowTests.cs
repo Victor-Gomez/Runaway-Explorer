@@ -38,6 +38,14 @@ public class AboutWindowTests : UiTestBase
         Assert.Equal(Log.FilePath, Text(window, "LogPathText"));
     }
 
+    [AvaloniaFact]
+    public void Construct_MentionsAuthor()
+    {
+        AboutWindow window = Track(new AboutWindow(new AppSettings()));
+        var texts = window.GetLogicalDescendants().OfType<TextBlock>().Select(t => t.Text).ToList();
+        Assert.Contains(texts, t => t != null && t.Contains("Victor Gomez"));
+    }
+
     [AvaloniaTheory]
     [InlineData("Dark")]
     [InlineData("Light")]
@@ -54,7 +62,7 @@ public class AboutWindowTests : UiTestBase
         window.Arrange(new Rect(0, 0, 520, 2000));
 
         var links = window.GetLogicalDescendants().OfType<HyperlinkButton>().ToList();
-        Assert.Equal(3, links.Count);
+        Assert.Equal(4, links.Count);
 
         foreach (HyperlinkButton link in links)
         {

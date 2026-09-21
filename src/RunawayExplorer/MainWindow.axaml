@@ -28,6 +28,9 @@
             <MenuItem x:Name="TreeMenuCopyPath" Header="{DynamicResource ContextMenu_CopyPath}" Click="TreeContextCopyPath_Click"/>
             <MenuItem x:Name="TreeMenuReveal" Header="{DynamicResource ContextMenu_Reveal}" Click="TreeContextRevealInExplorer_Click"
                       ToolTip.Tip="{DynamicResource ToolTip_Reveal}"/>
+            <Separator x:Name="TreeMenuExpandSeparator"/>
+            <MenuItem x:Name="TreeMenuExpandAll" Header="{DynamicResource ContextMenu_ExpandAll}" Click="TreeContextExpandAll_Click"/>
+            <MenuItem x:Name="TreeMenuCollapseAll" Header="{DynamicResource ContextMenu_CollapseAll}" Click="TreeContextCollapseAll_Click"/>
             <Separator x:Name="TreeMenuExportSeparator"/>
             <MenuItem x:Name="TreeMenuExportItem" Header="{DynamicResource ContextMenu_ExportItem}" Click="TreeContextExportItem_Click"
                       ToolTip.Tip="{DynamicResource ToolTip_ExportItem}"/>
@@ -43,6 +46,7 @@
             <MenuItem x:Name="PreviewMenuZoomOut" Header="{DynamicResource ContextMenu_ZoomOut}" Click="PreviewZoomOut_Click" InputGesture="Ctrl+OemMinus"/>
             <MenuItem x:Name="PreviewMenuFit" Header="{DynamicResource ContextMenu_Fit}" Click="PreviewResetZoom_Click" InputGesture="Ctrl+D0"/>
             <MenuItem x:Name="PreviewMenuZoom100" Header="{DynamicResource ContextMenu_Zoom100}" Click="PreviewZoom100_Click" InputGesture="Ctrl+D1"/>
+            <MenuItem x:Name="PreviewMenuCopyImage" Header="{DynamicResource ContextMenu_CopyImage}" Click="PreviewCopyImage_Click" InputGesture="Ctrl+C"/>
             <MenuItem x:Name="PreviewMenuCopySelection" Header="{DynamicResource ContextMenu_CopySelection}" Click="PreviewCopySelection_Click"/>
             <MenuItem x:Name="PreviewMenuCopyText" Header="{DynamicResource ContextMenu_CopyText}" Click="PreviewCopyAllText_Click"/>
             <MenuItem x:Name="PreviewMenuOpenExternal" Header="{DynamicResource ContextMenu_OpenExternal}" Click="OpenExternalButton_Click"/>
@@ -137,7 +141,9 @@
                     </Button>
                     <ProgressBar x:Name="ScanProgressBar" Width="160" Height="16" IsIndeterminate="False" IsVisible="False"/>
                 </StackPanel>
-                <TextBlock x:Name="SelectedPathText" Text="No entry selected." VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                <TextBlock x:Name="SelectedPathText" Text="No entry selected." VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                           Cursor="Hand" ToolTip.Tip="Click to copy path, right-click to reveal in Explorer"
+                           PointerPressed="SelectedPathText_PointerPressed"/>
             </DockPanel>
         </Border>
 
@@ -163,13 +169,20 @@
                         </ComboBox.ItemTemplate>
                     </ComboBox>
                     <Grid>
-                        <TextBox x:Name="SearchBox" Padding="24,3,4,3"
+                        <TextBox x:Name="SearchBox" Padding="24,3,24,3"
                                  Watermark="{DynamicResource Filter_Placeholder}"
                                  ToolTip.Tip="Filter the tree by entry name (e.g. H09, e07, VOICE_0012)."
-                                 TextChanged="SearchBox_TextChanged"/>
+                                 TextChanged="SearchBox_TextChanged"
+                                 KeyDown="SearchBox_KeyDown"/>
                         <Image Source="{StaticResource SearchIcon}" Width="14" Height="14"
                                HorizontalAlignment="Left" VerticalAlignment="Center"
                                Margin="6,0,0,0" IsHitTestVisible="False" Opacity="0.6"/>
+                        <Button x:Name="SearchClearButton" Classes="tool" Width="20" Height="20"
+                                HorizontalAlignment="Right" VerticalAlignment="Center"
+                                Margin="0,0,4,0" IsVisible="False" Click="SearchClearButton_Click"
+                                ToolTip.Tip="Clear filter (Esc)">
+                            <Image Source="{StaticResource CloseIcon}" Width="10" Height="10" Opacity="0.6"/>
+                        </Button>
                     </Grid>
                 </StackPanel>
 
@@ -219,29 +232,43 @@
                         <TextBlock x:Name="ImageInfoText" VerticalAlignment="Center" Opacity="0.75" TextTrimming="CharacterEllipsis"/>
                     </DockPanel>
                     <!-- Right sidebar for Scene Overlays checklist (visible in scene view when overlays exist) -->
-                    <Border x:Name="SceneOverlaysPanel" DockPanel.Dock="Right" Width="240" Margin="8,0,0,0"
+                    <Border x:Name="SceneOverlaysPanel" DockPanel.Dock="Right" Width="260" Margin="8,0,0,0"
                             Background="#18181f" BorderBrush="#2a2a35" BorderThickness="1" CornerRadius="6"
                             IsVisible="False">
                         <DockPanel Margin="10">
-                            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
-                                <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" VerticalAlignment="Center">
-                                    <Button Classes="zoomBtn" Width="36" Height="22" Padding="0" Content="{DynamicResource SceneOverlays_All}"
-                                            Margin="0,0,4,0" FontSize="11" Click="SceneOverlaysSelectAll_Click" ToolTip.Tip="Select all overlays"/>
-                                    <Button Classes="zoomBtn" Width="44" Height="22" Padding="0" Content="{DynamicResource SceneOverlays_None}"
-                                            FontSize="11" Click="SceneOverlaysSelectNone_Click" ToolTip.Tip="Deselect all overlays"/>
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                    <Image Source="{StaticResource ModLayersIcon}" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                    <TextBlock x:Name="SceneOverlaysTitle" Text="{DynamicResource SceneOverlays_Title}" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center"/>
-                                </StackPanel>
-                            </DockPanel>
+                            <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                                <DockPanel Margin="0,0,0,6">
+                                    <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" VerticalAlignment="Center">
+                                        <Button Classes="zoomBtn" Width="36" Height="22" Padding="0" Content="{DynamicResource SceneOverlays_All}"
+                                                Margin="0,0,4,0" FontSize="11" Click="SceneOverlaysSelectAll_Click" ToolTip.Tip="Select all overlays"/>
+                                        <Button Classes="zoomBtn" Width="44" Height="22" Padding="0" Content="{DynamicResource SceneOverlays_None}"
+                                                FontSize="11" Click="SceneOverlaysSelectNone_Click" ToolTip.Tip="Deselect all overlays"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Image Source="{StaticResource ModLayersIcon}" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="SceneOverlaysTitle" Text="{DynamicResource SceneOverlays_Title}" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </DockPanel>
+                                <DockPanel Margin="0,2,0,0">
+                                    <TextBlock Text="{DynamicResource SceneOverlays_Opacity}" FontSize="11" Opacity="0.75" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                    <TextBlock x:Name="SceneOverlayOpacityText" Text="100%" FontSize="11" Opacity="0.75"
+                                               Width="34" DockPanel.Dock="Right" TextAlignment="Right" VerticalAlignment="Center"/>
+                                    <Slider x:Name="SceneOverlayOpacitySlider" Minimum="0" Maximum="100" Value="100"
+                                            VerticalAlignment="Center" ValueChanged="SceneOverlayOpacity_ValueChanged"/>
+                                </DockPanel>
+                            </StackPanel>
                             <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
                                 <ItemsControl x:Name="SceneOverlaysItemsControl">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
-                                            <CheckBox Margin="0,2,0,2" IsChecked="{Binding IsChecked, Mode=TwoWay}">
-                                                <TextBlock Text="{Binding DisplayName}" FontSize="11" TextTrimming="CharacterEllipsis"/>
-                                            </CheckBox>
+                                            <DockPanel Margin="0,2,0,2">
+                                                <Button Classes="zoomBtn" Width="36" Height="20" Padding="0" Margin="4,0,0,0"
+                                                        DockPanel.Dock="Right" FontSize="10" Content="{DynamicResource SceneOverlays_Solo}"
+                                                        Click="SceneOverlaySolo_Click" ToolTip.Tip="Solo this overlay (hide all others)"/>
+                                                <CheckBox Margin="0" IsChecked="{Binding IsChecked, Mode=TwoWay}" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding DisplayName}" FontSize="11" TextTrimming="CharacterEllipsis"/>
+                                                </CheckBox>
+                                            </DockPanel>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
@@ -367,8 +394,12 @@
                          bounding box always falls a bit short of the requested width and Stretch=None would
                          re-fire SizeChanged with a smaller width on every layout pass. -->
                     <Image x:Name="WaveformImage" Height="64" Stretch="Fill"
-                           HorizontalAlignment="Stretch"
-                           SizeChanged="WaveformImage_SizeChanged"/>
+                           HorizontalAlignment="Stretch" Cursor="Hand"
+                           ToolTip.Tip="Click or drag to seek"
+                           SizeChanged="WaveformImage_SizeChanged"
+                           PointerPressed="WaveformImage_PointerPressed"
+                           PointerMoved="WaveformImage_PointerMoved"
+                           PointerReleased="WaveformImage_PointerReleased"/>
 
                     <Slider x:Name="SoundSlider" Margin="0,4,0,0" Minimum="0"
                             PointerPressed="SoundSlider_PointerPressed" PointerReleased="SoundSlider_PointerReleased"/>
@@ -389,6 +420,19 @@
                                 ToolTip.Tip="Stop">
                             <Image Source="{StaticResource StopIcon}" Width="18" Height="18"/>
                         </Button>
+
+                        <Border Width="1" Background="#33FFFFFF" Margin="24,8,20,8"/>
+
+                        <!-- Volume & Mute -->
+                        <Button x:Name="SoundMuteButton" Classes="tool" Width="32" Height="32"
+                                VerticalAlignment="Center" Click="MuteButton_Click" ToolTip.Tip="Mute / Unmute (M)">
+                            <Image x:Name="SoundMuteIcon" Source="{StaticResource SoundTypeIcon}" Width="18" Height="18"/>
+                        </Button>
+                        <Slider x:Name="SoundVolumeSlider" Width="100" Minimum="0" Maximum="100" Value="100"
+                                VerticalAlignment="Center" Margin="6,0,0,0"
+                                ValueChanged="VolumeSlider_ValueChanged"/>
+                        <TextBlock x:Name="SoundVolumeText" Text="100%" VerticalAlignment="Center" Width="36" Margin="6,0,0,0"
+                                   FontSize="11" Opacity="0.75" FontFamily="Consolas,Menlo,monospace"/>
                     </StackPanel>
                 </StackPanel>
 
@@ -420,18 +464,31 @@
                             <TextBlock x:Name="VideoTotalTimeText" HorizontalAlignment="Right"
                                        FontFamily="Consolas" FontSize="12" Opacity="0.8" Text="0:00"/>
                         </Grid>
-                        <StackPanel Orientation="Horizontal">
-                            <Button x:Name="VideoPlayPauseButton" Width="48" Height="36" Margin="0,0,6,0"
-                                    Click="VideoPlayPauseButton_Click" ToolTip.Tip="Play / Pause (Space)">
-                                <Image x:Name="VideoPlayPauseIcon" Source="{StaticResource PlayIcon}" Width="18" Height="18"/>
-                            </Button>
-                            <Button x:Name="VideoStopButton" Width="48" Height="36" Margin="0,0,12,0"
-                                    Click="VideoStopButton_Click" ToolTip.Tip="Stop">
-                                <Image Source="{StaticResource StopIcon}" Width="14" Height="14"/>
-                            </Button>
-                            <Button x:Name="OpenExternalButton" Content="Open in External Player"
-                                    Padding="12,6" Click="OpenExternalButton_Click"/>
-                        </StackPanel>
+                        <DockPanel>
+                            <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" VerticalAlignment="Center">
+                                <Button x:Name="VideoMuteButton" Classes="tool" Width="32" Height="32"
+                                        VerticalAlignment="Center" Click="MuteButton_Click" ToolTip.Tip="Mute / Unmute (M)">
+                                    <Image x:Name="VideoMuteIcon" Source="{StaticResource SoundTypeIcon}" Width="18" Height="18"/>
+                                </Button>
+                                <Slider x:Name="VideoVolumeSlider" Width="100" Minimum="0" Maximum="100" Value="100"
+                                        VerticalAlignment="Center" Margin="6,0,0,0"
+                                        ValueChanged="VolumeSlider_ValueChanged"/>
+                                <TextBlock x:Name="VideoVolumeText" Text="100%" VerticalAlignment="Center" Width="36" Margin="6,0,0,0"
+                                           FontSize="11" Opacity="0.75" FontFamily="Consolas,Menlo,monospace"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <Button x:Name="VideoPlayPauseButton" Width="48" Height="36" Margin="0,0,6,0"
+                                        Click="VideoPlayPauseButton_Click" ToolTip.Tip="Play / Pause (Space)">
+                                    <Image x:Name="VideoPlayPauseIcon" Source="{StaticResource PlayIcon}" Width="18" Height="18"/>
+                                </Button>
+                                <Button x:Name="VideoStopButton" Width="48" Height="36" Margin="0,0,12,0"
+                                        Click="VideoStopButton_Click" ToolTip.Tip="Stop">
+                                    <Image Source="{StaticResource StopIcon}" Width="14" Height="14"/>
+                                </Button>
+                                <Button x:Name="OpenExternalButton" Content="Open in External Player"
+                                        Padding="12,6" Click="OpenExternalButton_Click"/>
+                            </StackPanel>
+                        </DockPanel>
                     </StackPanel>
                     <ScrollViewer x:Name="VideoScrollViewer"
                                   HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">

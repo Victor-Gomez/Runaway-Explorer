@@ -76,6 +76,20 @@ public sealed class LibVlcMediaPlayer : IDisposable
         set => NativePlayer.Time = (long)value.TotalMilliseconds;
     }
 
+    /// <summary>Playback volume (0 to 100).</summary>
+    public int Volume
+    {
+        get => NativePlayer.Volume;
+        set => NativePlayer.Volume = Math.Clamp(value, 0, 100);
+    }
+
+    /// <summary>Whether playback is muted.</summary>
+    public bool IsMuted
+    {
+        get => NativePlayer.Mute;
+        set => NativePlayer.Mute = value;
+    }
+
     public void Dispose()
     {
         NativePlayer.Dispose();

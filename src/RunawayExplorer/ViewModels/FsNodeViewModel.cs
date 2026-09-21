@@ -186,6 +186,34 @@ public sealed class FsNodeViewModel : INotifyPropertyChanged
             Children.Add(new FsNodeViewModel(file, _vfs));
     }
 
+    /// <summary>Recursively expands this directory and all descendant directories.</summary>
+    public void ExpandAll()
+    {
+        if (!IsDirectory)
+            return;
+
+        IsExpanded = true;
+        foreach (FsNodeViewModel child in Children)
+        {
+            if (child.IsDirectory)
+                child.ExpandAll();
+        }
+    }
+
+    /// <summary>Recursively collapses this directory and all descendant directories.</summary>
+    public void CollapseAll()
+    {
+        if (!IsDirectory)
+            return;
+
+        foreach (FsNodeViewModel child in Children)
+        {
+            if (child.IsDirectory)
+                child.CollapseAll();
+        }
+        IsExpanded = false;
+    }
+
     /// <summary>Notifies that DisplayName has changed, recursively updating children.</summary>
     public void NotifyDisplayNameChanged()
     {

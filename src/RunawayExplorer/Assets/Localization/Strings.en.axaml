@@ -22,6 +22,8 @@
     <!-- Context Menus -->
     <x:String x:Key="ContextMenu_CopyPath">_Copy Path</x:String>
     <x:String x:Key="ContextMenu_Reveal">_Reveal in Explorer</x:String>
+    <x:String x:Key="ContextMenu_ExpandAll">_Expand All</x:String>
+    <x:String x:Key="ContextMenu_CollapseAll">_Collapse All</x:String>
     <x:String x:Key="ContextMenu_ExportItem">_Export This Item...</x:String>
     <x:String x:Key="ContextMenu_ExportRaw">Export Ra_w...</x:String>
     <x:String x:Key="ContextMenu_BatchExport">_Batch Export This Folder...</x:String>
@@ -29,9 +31,12 @@
     <x:String x:Key="ContextMenu_ZoomOut">Zoom _Out</x:String>
     <x:String x:Key="ContextMenu_Fit">_Fit to Window</x:String>
     <x:String x:Key="ContextMenu_Zoom100">_Actual Size (100%)</x:String>
+    <x:String x:Key="ContextMenu_CopyImage">Copy _Image</x:String>
     <x:String x:Key="ContextMenu_CopySelection">_Copy Selection</x:String>
     <x:String x:Key="ContextMenu_CopyText">Copy _All Text</x:String>
     <x:String x:Key="ContextMenu_OpenExternal">Open in _External Player</x:String>
+    <x:String x:Key="SceneOverlays_Solo">Solo</x:String>
+    <x:String x:Key="SceneOverlays_Opacity">Opacity</x:String>
 
     <!-- Tooltips -->
     <x:String x:Key="ToolTip_Reveal">Show the archive or file on disk.</x:String>

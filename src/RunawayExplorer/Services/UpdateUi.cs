@@ -91,6 +91,18 @@ public static class RepositoryUrls
         return $"https://github.com/{segments[1]}/{segments[2]}";
     }
 
+    public static string Author(string feedUrl)
+    {
+        if (!Uri.TryCreate(feedUrl, UriKind.Absolute, out Uri? uri))
+            return "https://github.com/Victor-Gomez";
+
+        string[] segments = uri.AbsolutePath.Trim('/').Split('/');
+        if (segments.Length < 2 || !string.Equals(segments[0], "repos", StringComparison.OrdinalIgnoreCase))
+            return "https://github.com/Victor-Gomez";
+
+        return $"https://github.com/{segments[1]}";
+    }
+
     public static string Issues(string feedUrl) => $"{Home(feedUrl)}/issues";
 
     public static string Releases(string feedUrl) => $"{Home(feedUrl)}/releases/latest";

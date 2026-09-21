@@ -91,6 +91,12 @@ public partial class MainWindow : Window
 
         InitializeOptionsMenu();
 
+        SoundVolumeSlider.Value = _settings.Volume;
+        VideoVolumeSlider.Value = _settings.Volume;
+        SoundVolumeText.Text = $"{_settings.Volume}%";
+        VideoVolumeText.Text = $"{_settings.Volume}%";
+        UpdateMuteVisuals();
+
         // Tunnel routing so shortcuts fire even when a child control has keyboard focus.
         AddHandler(KeyDownEvent, MainWindow_PreviewKeyDown, RoutingStrategies.Tunnel);
         AddHandler(DragDrop.DragOverEvent, Window_DragOver);
@@ -117,6 +123,8 @@ public partial class MainWindow : Window
     private LibVlcMediaPlayer CreateSoundPlayer()
     {
         var player = new LibVlcMediaPlayer();
+        player.Volume = _settings.Volume;
+        player.IsMuted = _settings.IsMuted;
         player.MediaOpened += MediaPlayer_MediaOpened;
         player.MediaEnded += MediaPlayer_MediaEnded;
         return player;
@@ -125,6 +133,8 @@ public partial class MainWindow : Window
     private LibVlcMediaPlayer CreateVideoPlayer()
     {
         var player = new LibVlcMediaPlayer();
+        player.Volume = _settings.Volume;
+        player.IsMuted = _settings.IsMuted;
         player.MediaEnded += VideoPlayer_MediaEnded;
         player.MediaOpened += VideoPlayer_MediaOpened;
 
@@ -300,6 +310,16 @@ public partial class MainWindow : Window
                 UpdateSoundTimeReadout();
                 e.Handled = true;
             }
+        }
+        else if (ctrl && e.Key == Key.C && (ImagePanel.IsVisible || AnimationPanel.IsVisible) && !typing)
+        {
+            PreviewCopyImage_Click(this, new RoutedEventArgs());
+            e.Handled = true;
+        }
+        else if (!typing && e.Key == Key.M && (SoundPanel.IsVisible || VideoPanel.IsVisible))
+        {
+            MuteButton_Click(this, new RoutedEventArgs());
+            e.Handled = true;
         }
     }
 
@@ -496,6 +516,35 @@ public partial class MainWindow : Window
 
     private void SetStatus(string text) => SelectedPathText.Text = text;
 
+    private async void SelectedPathText_PointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (_selectedNode is null)
+            return;
+
+        var prop = e.GetCurrentPoint(this).Properties;
+        if (prop.IsRightButtonPressed)
+        {
+            await RevealOnDiskAsync(_selectedNode);
+            e.Handled = true;
+        }
+        else if (prop.IsLeftButtonPressed)
+        {
+            string path = _selectedNode.GetPath();
+            await Dialogs.SetClipboardTextAsync(this, path);
+            string previousText = SelectedPathText.Text ?? "";
+            SelectedPathText.Text = "Copied path to clipboard!";
+            _ = Task.Delay(1200).ContinueWith(_ =>
+            {
+                Dispatcher.UIThread.Post(() =>
+                {
+                    if (SelectedPathText.Text == "Copied path to clipboard!")
+                        SelectedPathText.Text = previousText;
+                });
+            });
+            e.Handled = true;
+        }
+    }
+
     // ---------------------------------------------------------------------------------------------
     // Tree filter & search
     // ---------------------------------------------------------------------------------------------
@@ -504,8 +553,25 @@ public partial class MainWindow : Window
 
     private void SearchBox_TextChanged(object? sender, TextChangedEventArgs e)
     {
+        SearchClearButton.IsVisible = !string.IsNullOrEmpty(SearchBox.Text);
         _searchDebounceTimer.Stop();
         _searchDebounceTimer.Start();
+    }
+
+    private void SearchClearButton_Click(object? sender, RoutedEventArgs e)
+    {
+        SearchBox.Text = string.Empty;
+        Tree.Focus();
+    }
+
+    private void SearchBox_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            SearchBox.Text = string.Empty;
+            Tree.Focus();
+            e.Handled = true;
+        }
     }
 
     private async Task ApplyTreeFilterAsync()
@@ -967,19 +1033,19 @@ public partial class MainWindow : Window
 
     /// <summary>The node the menu was opened on. Right-clicking a row doesn't select it, so the selection is not a reliable stand-in.</summary>
     private FsNode? _contextTargetNode;
+    private FsNodeViewModel? _contextTargetVm;
 
     private FsNode? ResolveContextTarget() => _contextTargetNode ?? (Tree.SelectedItem as FsNodeViewModel)?.Node;
 
     private void TreeContextMenu_Opening(object? sender, System.ComponentModel.CancelEventArgs e)
     {
-        _contextTargetNode = (sender as ContextMenu)?.PlacementTarget switch
+        _contextTargetVm = (sender as ContextMenu)?.PlacementTarget switch
         {
             Control control => control.DataContext as FsNodeViewModel
                                ?? control.FindAncestorOfType<TreeViewItem>()?.DataContext as FsNodeViewModel,
             _ => null,
-        } is { } vm
-            ? vm.Node
-            : (Tree.SelectedItem as FsNodeViewModel)?.Node;
+        } ?? (Tree.SelectedItem as FsNodeViewModel);
+        _contextTargetNode = _contextTargetVm?.Node;
 
         TreeContextActions actions = TreeContextActions.For(_contextTargetNode);
         if (actions.IsEmpty)
@@ -990,10 +1056,23 @@ public partial class MainWindow : Window
 
         TreeMenuCopyPath.IsVisible = actions.CopyPath;
         TreeMenuReveal.IsVisible = actions.RevealInExplorer;
+        TreeMenuExpandSeparator.IsVisible = actions.HasExpandGroup;
+        TreeMenuExpandAll.IsVisible = actions.ExpandAll;
+        TreeMenuCollapseAll.IsVisible = actions.CollapseAll;
         TreeMenuExportSeparator.IsVisible = actions.HasExportGroup;
         TreeMenuExportItem.IsVisible = actions.ExportItem;
         TreeMenuExportRaw.IsVisible = actions.ExportRaw;
         TreeMenuBatchExport.IsVisible = actions.BatchExportFolder;
+    }
+
+    private void TreeContextExpandAll_Click(object? sender, RoutedEventArgs e)
+    {
+        (_contextTargetVm ?? Tree.SelectedItem as FsNodeViewModel)?.ExpandAll();
+    }
+
+    private void TreeContextCollapseAll_Click(object? sender, RoutedEventArgs e)
+    {
+        (_contextTargetVm ?? Tree.SelectedItem as FsNodeViewModel)?.CollapseAll();
     }
 
     private async void TreeContextCopyPath_Click(object? sender, RoutedEventArgs e)
@@ -1084,6 +1163,7 @@ public partial class MainWindow : Window
         PreviewMenuZoomOut.IsVisible = actions.Zoom;
         PreviewMenuFit.IsVisible = actions.Zoom;
         PreviewMenuZoom100.IsVisible = actions.Zoom;
+        PreviewMenuCopyImage.IsVisible = actions.CopyImage;
         PreviewMenuCopySelection.IsVisible = actions.CopyText;
         PreviewMenuCopyText.IsVisible = actions.CopyText;
         PreviewMenuOpenExternal.IsVisible = actions.OpenExternally;
@@ -1104,6 +1184,38 @@ public partial class MainWindow : Window
     private void PreviewResetZoom_Click(object? sender, RoutedEventArgs e) => ActiveZoom?.Fit();
 
     private void PreviewZoom100_Click(object? sender, RoutedEventArgs e) => ActiveZoom?.Zoom100();
+
+    private async void PreviewCopyImage_Click(object? sender, RoutedEventArgs e)
+    {
+        await CopyCurrentImageToClipboardAsync();
+    }
+
+    private async Task CopyCurrentImageToClipboardAsync()
+    {
+        DecodedImage? image = null;
+        if (_currentContent is ImageResource img)
+        {
+            image = img.Image;
+        }
+        else if (_currentContent is AnimationResource)
+        {
+            if (_animAsset is not null && _animFrames is not null && _animFrameIndex >= 0 && _animFrameIndex < _animFrames.Length)
+            {
+                SpriteFrame frame = _animFrames[_animFrameIndex] ??= _animAsset.DecodeFrame(_animFrameIndex);
+                image = frame.Image;
+            }
+        }
+        else if (_currentContent is SceneResource scene)
+        {
+            image = scene.Background;
+        }
+
+        if (image is null)
+            return;
+
+        await Dialogs.SetClipboardImageAsync(this, image);
+        SetStatus("Copied image to clipboard.");
+    }
 
     private async void PreviewCopySelection_Click(object? sender, RoutedEventArgs e)
     {
@@ -1828,6 +1940,34 @@ public partial class MainWindow : Window
                 item.IsChecked = false;
     }
 
+    private void SceneOverlayOpacity_ValueChanged(object? sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (SceneOverlayLayer is not null)
+            SceneOverlayLayer.Opacity = e.NewValue / 100.0;
+        if (SceneOverlayOpacityText is not null)
+            SceneOverlayOpacityText.Text = $"{(int)e.NewValue}%";
+    }
+
+    private void SceneOverlaySolo_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: SceneOverlayItem clickedItem } &&
+            SceneOverlaysItemsControl.ItemsSource is IEnumerable<SceneOverlayItem> items)
+        {
+            var itemList = items.ToList();
+            bool isAlreadySolo = clickedItem.IsChecked && itemList.All(i => i == clickedItem ? i.IsChecked : !i.IsChecked);
+            if (isAlreadySolo)
+            {
+                foreach (var item in itemList)
+                    item.IsChecked = true;
+            }
+            else
+            {
+                foreach (var item in itemList)
+                    item.IsChecked = (item == clickedItem);
+            }
+        }
+    }
+
     private void ImageBgRadio_Click(object? sender, RoutedEventArgs e)
     {
         if (_syncingBackgroundToggles)
@@ -2292,6 +2432,104 @@ public partial class MainWindow : Window
         _sliderDragging = false;
         _mediaPlayer.Position = TimeSpan.FromSeconds(SoundSlider.Value);
         UpdateSoundTimeReadout();
+    }
+
+    private bool _isScrubbingWaveform;
+
+    private void WaveformImage_PointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (!_mediaPlayer.HasDurationTimeSpan)
+            return;
+
+        _isScrubbingWaveform = true;
+        e.Pointer.Capture(WaveformImage);
+        SeekWaveformAt(e.GetPosition(WaveformImage).X);
+        e.Handled = true;
+    }
+
+    private void WaveformImage_PointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (_isScrubbingWaveform && _mediaPlayer.HasDurationTimeSpan)
+        {
+            SeekWaveformAt(e.GetPosition(WaveformImage).X);
+            e.Handled = true;
+        }
+    }
+
+    private void WaveformImage_PointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (_isScrubbingWaveform)
+        {
+            _isScrubbingWaveform = false;
+            e.Pointer.Capture(null);
+            e.Handled = true;
+        }
+    }
+
+    private void SeekWaveformAt(double x)
+    {
+        if (_mediaPlayer.Duration is not { } duration || WaveformImage.Bounds.Width <= 0)
+            return;
+
+        double fraction = Math.Clamp(x / WaveformImage.Bounds.Width, 0.0, 1.0);
+        TimeSpan target = TimeSpan.FromMilliseconds(duration.TotalMilliseconds * fraction);
+        _mediaPlayer.Position = target;
+        SoundSlider.Value = target.TotalSeconds;
+        UpdateSoundTimeReadout();
+    }
+
+    private bool _syncingVolume;
+
+    private void VolumeSlider_ValueChanged(object? sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (_syncingVolume)
+            return;
+
+        _syncingVolume = true;
+        try
+        {
+            int vol = Math.Clamp((int)e.NewValue, 0, 100);
+            _settings.Volume = vol;
+            _settings.Save();
+
+            if (_mediaPlayerBacking is not null)
+                _mediaPlayerBacking.Volume = vol;
+            if (_videoPlayerBacking is not null)
+                _videoPlayerBacking.Volume = vol;
+
+            SoundVolumeSlider.Value = vol;
+            VideoVolumeSlider.Value = vol;
+            SoundVolumeText.Text = $"{vol}%";
+            VideoVolumeText.Text = $"{vol}%";
+        }
+        finally
+        {
+            _syncingVolume = false;
+        }
+    }
+
+    private void MuteButton_Click(object? sender, RoutedEventArgs e)
+    {
+        _settings.IsMuted = !_settings.IsMuted;
+        _settings.Save();
+
+        if (_mediaPlayerBacking is not null)
+            _mediaPlayerBacking.IsMuted = _settings.IsMuted;
+        if (_videoPlayerBacking is not null)
+            _videoPlayerBacking.IsMuted = _settings.IsMuted;
+
+        UpdateMuteVisuals();
+    }
+
+    private void UpdateMuteVisuals()
+    {
+        bool muted = _settings.IsMuted;
+        double opacity = muted ? 0.35 : 1.0;
+        SoundMuteButton.Opacity = opacity;
+        VideoMuteButton.Opacity = opacity;
+        string tip = muted ? "Unmute (M)" : "Mute (M)";
+        ToolTip.SetTip(SoundMuteButton, tip);
+        ToolTip.SetTip(VideoMuteButton, tip);
     }
 
     // ---------------------------------------------------------------------------------------------

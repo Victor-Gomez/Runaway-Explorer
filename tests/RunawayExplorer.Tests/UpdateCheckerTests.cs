@@ -139,6 +139,22 @@ public class RepositoryUrlsTests
         Assert.Equal("https://github.com/someone/their-fork/issues", RepositoryUrls.Issues(feed));
         Assert.Equal("https://github.com/someone/their-fork/releases/latest", RepositoryUrls.Releases(feed));
     }
+
+    [Fact]
+    public void Author_DerivesAuthorPageFromTheApiFeedUrl()
+    {
+        Assert.Equal(
+            "https://github.com/Victor-Gomez",
+            RepositoryUrls.Author("https://api.github.com/repos/Victor-Gomez/Runaway-Explorer/releases/latest"));
+
+        Assert.Equal(
+            "https://github.com/someone",
+            RepositoryUrls.Author("https://api.github.com/repos/someone/their-fork/releases/latest"));
+
+        Assert.Equal(
+            "https://github.com/Victor-Gomez",
+            RepositoryUrls.Author("not a url"));
+    }
 }
 
 /// <summary>Only http(s) URLs may reach the shell -- see <see cref="SystemBrowser"/>.</summary>

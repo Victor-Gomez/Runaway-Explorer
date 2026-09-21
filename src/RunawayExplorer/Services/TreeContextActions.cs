@@ -11,13 +11,18 @@ public readonly record struct TreeContextActions(
     bool RevealInExplorer,
     bool ExportItem,
     bool ExportRaw,
-    bool BatchExportFolder)
+    bool BatchExportFolder,
+    bool ExpandAll,
+    bool CollapseAll)
 {
     /// <summary>Nothing applies -- the menu has no reason to open.</summary>
-    public bool IsEmpty => !CopyPath && !RevealInExplorer && !ExportItem && !ExportRaw && !BatchExportFolder;
+    public bool IsEmpty => !CopyPath && !RevealInExplorer && !ExportItem && !ExportRaw && !BatchExportFolder && !ExpandAll && !CollapseAll;
 
     /// <summary>True when at least one export entry applies, i.e. the group's separator earns its place.</summary>
     public bool HasExportGroup => ExportItem || ExportRaw || BatchExportFolder;
+
+    /// <summary>True when folder expansion actions apply.</summary>
+    public bool HasExpandGroup => ExpandAll || CollapseAll;
 
     public static TreeContextActions For(FsNode? node)
     {
@@ -37,7 +42,9 @@ public readonly record struct TreeContextActions(
             // fall back to their raw bytes, so the item export is always on offer for files.
             ExportItem: isFile,
             ExportRaw: isFile,
-            BatchExportFolder: isDirectory);
+            BatchExportFolder: isDirectory,
+            ExpandAll: isDirectory,
+            CollapseAll: isDirectory);
     }
 }
 
@@ -49,15 +56,16 @@ public readonly record struct TreeContextActions(
 public readonly record struct PreviewContextActions(
     bool Zoom,
     bool CopyText,
+    bool CopyImage,
     bool OpenExternally,
     bool Export,
     bool ExportRaw,
     bool CopyPath,
     bool RevealInExplorer)
 {
-    public bool IsEmpty => !Zoom && !CopyText && !OpenExternally && !Export && !ExportRaw && !CopyPath && !RevealInExplorer;
+    public bool IsEmpty => !Zoom && !CopyText && !CopyImage && !OpenExternally && !Export && !ExportRaw && !CopyPath && !RevealInExplorer;
 
-    public bool HasViewGroup => Zoom || CopyText || OpenExternally;
+    public bool HasViewGroup => Zoom || CopyText || CopyImage || OpenExternally;
 
     public bool HasExportGroup => Export || ExportRaw;
 
@@ -72,6 +80,7 @@ public readonly record struct PreviewContextActions(
         return new PreviewContextActions(
             Zoom: content is ImageResource or AnimationResource or SceneResource,
             CopyText: content is TextResource,
+            CopyImage: content is ImageResource or AnimationResource or SceneResource,
             OpenExternally: content is VideoResource,
             // A scene view is the archive's background; exporting it means the background PNG.
             Export: content is not ErrorResource && (isFile || content is SceneResource),

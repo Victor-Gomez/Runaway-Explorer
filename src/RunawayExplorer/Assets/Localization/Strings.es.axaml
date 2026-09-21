@@ -22,6 +22,8 @@
     <!-- Context Menus -->
     <x:String x:Key="ContextMenu_CopyPath">_Copiar ruta</x:String>
     <x:String x:Key="ContextMenu_Reveal">_Mostrar en el Explorador</x:String>
+    <x:String x:Key="ContextMenu_ExpandAll">_Expandir todo</x:String>
+    <x:String x:Key="ContextMenu_CollapseAll">_Contraer todo</x:String>
     <x:String x:Key="ContextMenu_ExportItem">_Exportar este elemento...</x:String>
     <x:String x:Key="ContextMenu_ExportRaw">Exportar en _bruto...</x:String>
     <x:String x:Key="ContextMenu_BatchExport">_Exportar esta carpeta por lotes...</x:String>
@@ -29,9 +31,12 @@
     <x:String x:Key="ContextMenu_ZoomOut">Alejar</x:String>
     <x:String x:Key="ContextMenu_Fit">_Ajustar a la ventana</x:String>
     <x:String x:Key="ContextMenu_Zoom100">_Tamaño real (100%)</x:String>
+    <x:String x:Key="ContextMenu_CopyImage">Copiar _imagen</x:String>
     <x:String x:Key="ContextMenu_CopySelection">_Copiar selección</x:String>
     <x:String x:Key="ContextMenu_CopyText">Copiar _todo el texto</x:String>
     <x:String x:Key="ContextMenu_OpenExternal">Abrir en reproductor _externo</x:String>
+    <x:String x:Key="SceneOverlays_Solo">Solo</x:String>
+    <x:String x:Key="SceneOverlays_Opacity">Opacidad</x:String>
 
     <!-- Tooltips -->
     <x:String x:Key="ToolTip_Reveal">Mostrar el archivo o contenedor en el disco.</x:String>

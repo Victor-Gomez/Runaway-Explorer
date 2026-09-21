@@ -46,6 +46,9 @@ public class TreeContextActionsTests
         Assert.False(a.BatchExportFolder);
         // It lives inside an archive; there is no file of its own to reveal.
         Assert.False(a.RevealInExplorer);
+        Assert.False(a.ExpandAll);
+        Assert.False(a.CollapseAll);
+        Assert.False(a.HasExpandGroup);
     }
 
     [Fact]
@@ -54,6 +57,9 @@ public class TreeContextActionsTests
         TreeContextActions a = TreeContextActions.For(LooseFile());
         Assert.True(a.RevealInExplorer);
         Assert.True(a.ExportItem);
+        Assert.False(a.ExpandAll);
+        Assert.False(a.CollapseAll);
+        Assert.False(a.HasExpandGroup);
     }
 
     [Fact]
@@ -64,6 +70,9 @@ public class TreeContextActionsTests
         Assert.True(a.BatchExportFolder);
         Assert.False(a.ExportItem);
         Assert.False(a.ExportRaw);
+        Assert.True(a.ExpandAll);
+        Assert.True(a.CollapseAll);
+        Assert.True(a.HasExpandGroup);
     }
 
     [Fact]
@@ -73,6 +82,9 @@ public class TreeContextActionsTests
         Assert.False(a.RevealInExplorer);
         Assert.True(a.BatchExportFolder);
         Assert.True(a.HasExportGroup);
+        Assert.True(a.ExpandAll);
+        Assert.True(a.CollapseAll);
+        Assert.True(a.HasExpandGroup);
     }
 }
 
@@ -110,18 +122,34 @@ public class PreviewContextActionsTests
         Assert.True(a.Zoom);
         Assert.True(a.Export);
         Assert.True(a.ExportRaw);
+        Assert.True(a.CopyImage);
         Assert.False(a.CopyText);
         Assert.False(a.OpenExternally);
     }
 
     [Fact]
-    public void Animations_Zoom() => Assert.True(PreviewContextActions.For(new AnimationResource(AnyAsset()), Entry).Zoom);
+    public void Animations_Zoom()
+    {
+        var a = PreviewContextActions.For(new AnimationResource(AnyAsset()), Entry);
+        Assert.True(a.Zoom);
+        Assert.True(a.CopyImage);
+    }
 
     [Fact]
-    public void Text_Copies() => Assert.True(PreviewContextActions.For(new TextResource("x"), Entry).CopyText);
+    public void Text_Copies()
+    {
+        var a = PreviewContextActions.For(new TextResource("x"), Entry);
+        Assert.True(a.CopyText);
+        Assert.False(a.CopyImage);
+    }
 
     [Fact]
-    public void Video_OpensExternally() => Assert.True(PreviewContextActions.For(new VideoResource("x.bik"), Entry).OpenExternally);
+    public void Video_OpensExternally()
+    {
+        var a = PreviewContextActions.For(new VideoResource("x.bik"), Entry);
+        Assert.True(a.OpenExternally);
+        Assert.False(a.CopyImage);
+    }
 
     [Fact]
     public void Scene_ExportsTheBackgroundButHasNoRawBytes()
@@ -131,6 +159,7 @@ public class PreviewContextActionsTests
         Assert.True(a.Export);
         Assert.False(a.ExportRaw);
         Assert.True(a.RevealInExplorer);
+        Assert.True(a.CopyImage);
     }
 
     [Fact]
@@ -140,6 +169,7 @@ public class PreviewContextActionsTests
         Assert.False(a.Export);
         Assert.False(a.ExportRaw);
         Assert.True(a.CopyPath);
+        Assert.False(a.CopyImage);
     }
 }
 
@@ -198,8 +228,10 @@ public class KeyboardShortcutsTests
         Assert.Contains("Ctrl+O", gestures);
         Assert.Contains("Ctrl+P", gestures);
         Assert.Contains("Ctrl+E", gestures);
+        Assert.Contains("Ctrl+C", gestures);
         Assert.Contains("Space", gestures);
         Assert.Contains("B", gestures);
+        Assert.Contains("M", gestures);
         Assert.Contains("F1", gestures);
     }
 }

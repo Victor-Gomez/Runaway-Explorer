@@ -44,7 +44,7 @@ public sealed class VirtualFileSystem
     private readonly Dictionary<string, byte[]?> _attributeTableCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _attributeTableGate = new();
 
-    private VirtualFileSystem(string baseDir, FsNode root, VideoKeyfile? keyfile)
+    public VirtualFileSystem(string baseDir, FsNode root, VideoKeyfile? keyfile = null)
     {
         BaseDir = baseDir;
         Root = root;

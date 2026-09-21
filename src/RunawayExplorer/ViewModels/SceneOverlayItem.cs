@@ -42,6 +42,11 @@ public sealed class SceneOverlayItem : INotifyPropertyChanged
         }
     }
 
+    /// <summary>Callback to solo this overlay (hide all other overlays and show only this one).</summary>
+    public Action<SceneOverlayItem>? SoloRequested { get; set; }
+
+    public void Solo() => SoloRequested?.Invoke(this);
+
     public event PropertyChangedEventHandler? PropertyChanged;
     private void OnPropertyChanged([CallerMemberName] string? name = null)
         => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));

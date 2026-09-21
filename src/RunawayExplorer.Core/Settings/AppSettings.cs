@@ -22,6 +22,12 @@ public sealed class AppSettings
     /// <summary>Loop sound playback on end-of-file.</summary>
     public bool LoopSoundPlayback { get; set; }
 
+    /// <summary>Audio playback volume (0 to 100).</summary>
+    public int Volume { get; set; } = 100;
+
+    /// <summary>Whether audio playback is muted.</summary>
+    public bool IsMuted { get; set; }
+
     /// <summary>Start animations playing as soon as they are selected.</summary>
     public bool AutoPlayAnimation { get; set; } = true;
 

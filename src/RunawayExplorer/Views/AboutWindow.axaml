@@ -60,6 +60,7 @@
                 <StackPanel VerticalAlignment="Center">
                     <TextBlock Text="Runaway Explorer" FontSize="20" FontWeight="Bold"/>
                     <SelectableTextBlock x:Name="VersionText" Opacity="0.8" Margin="0,2,0,0"/>
+                    <TextBlock Text="Created by Victor Gomez" FontWeight="Medium" Opacity="0.85" Margin="0,3,0,0"/>
                     <TextBlock Text="An asset viewer for Runaway: A Road Adventure (Pendulo Studios, 2001)."
                                Opacity="0.7" TextWrapping="Wrap" Margin="0,4,0,0"/>
                 </StackPanel>
@@ -94,6 +95,7 @@
 
             <StackPanel Orientation="Horizontal" Spacing="4" Margin="-8,10,0,0">
                 <HyperlinkButton Content="Project on GitHub" Click="OpenRepo_Click"/>
+                <HyperlinkButton Content="Author (@Victor-Gomez)" Click="OpenAuthor_Click"/>
                 <HyperlinkButton Content="Report an Issue" Click="OpenIssues_Click"/>
                 <HyperlinkButton Content="Releases" Click="OpenReleases_Click"/>
             </StackPanel>

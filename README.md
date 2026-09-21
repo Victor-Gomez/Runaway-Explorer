@@ -2,7 +2,8 @@
 
 # Runaway Explorer
 
-A cross-platform viewer for the game assets of **Runaway: A Road Adventure** (Pendulo Studios, 2001).
+A cross-platform viewer for the game assets of **Runaway: A Road Adventure** (Pendulo Studios, 2001),
+created by [Victor Gomez](https://github.com/Victor-Gomez).
 Point it at an install and browse every scene background, overlay, sprite animation, music track,
 sound effect, voice line, lip-sync track and cutscene the game ships -- and export any of them.
 
@@ -27,18 +28,17 @@ headers; the formats were reverse-engineered from the Steam release and are writ
   frame rate, either on the animation's own bounding box or composited over the scene background at
   the frames' absolute coordinates. Frames of different sizes line up because every pixel run carries
   its own screen position.
-- **Sound.** Music (16 kHz), ambient/SFX and cinematic audio (22 kHz) and the 11,000-odd voice lines (16 kHz),
-  played in-app with a waveform strip and seek.
-- **Video.** The Bink cutscenes have their first kilobyte replaced with junk on disk; the viewer restores
-  the real headers from the game's keyfile and plays them directly through LibVLC -- no transcoding, no
-  ffmpeg.
-- **Export.** Single entries or whole folders: PNG for images and scene masks, **animated PNG** or
+- **Sound & Video.** Music (16 kHz), ambient/SFX and cinematic audio (22 kHz), voice lines (16 kHz),
+  and Bink cutscenes with restored headers played via LibVLC with dedicated volume sliders, mute toggles (M),
+  and interactive waveform click/drag seeking.
+- **Export & Clipboard.** Single entries or whole folders: PNG for images and scene masks, **animated PNG** or
   numbered **image sequence** (prompted via an in-app modal, with per-frame screen positions) for
   animations, WAV for audio, restored `.bik` for video, text for lip-sync tracks, raw bytes for anything
-  else. File names carry screen positions so a scene can be reassembled outside the app.
+  else. Easily copy images and animation frames to the clipboard (Ctrl+C).
 - **Quick navigation & localisation.** Full English and Spanish interface with human-friendly chapter
-  and scene names, resource type filter, name search, a fuzzy command palette (Ctrl+P), keyboard shortcuts
-  (F1 lists them), and remembered selection per install.
+  and scene names, resource type filter, name search with quick clear (Esc), tree expand/collapse all,
+  clickable status bar paths, a fuzzy command palette (Ctrl+P), keyboard shortcuts (F1 lists them),
+  and remembered selection per install.
 - **Update checks.** Optionally asks GitHub whether a newer release exists, then links you to it. Off
   until you say yes.
 
@@ -79,6 +79,10 @@ Windows build bundles it via NuGet; on Linux, install it from your distro's pack
   library): their codecs are only partly understood. Shown as hex dumps.
 - `RESOURCE.003` (phrase tables). Dialogue is not stored as text anywhere in the game data.
 - Animation timing. The files carry none; playback and APNG export use the rate you choose (15 fps by default).
+
+## Author
+
+Developed by **Victor Gomez** ([@Victor-Gomez](https://github.com/Victor-Gomez)).
 
 ## Acknowledgements
 

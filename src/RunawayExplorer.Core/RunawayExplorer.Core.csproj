@@ -6,6 +6,9 @@
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Version>1.2.0</Version>
+    <Authors>Victor Gomez</Authors>
+    <Copyright>Copyright © Victor Gomez</Copyright>
   </PropertyGroup>
 
 </Project>

@@ -32,8 +32,10 @@ public static class KeyboardShortcuts
         new(PreviewGroup, "Mouse wheel", "Zoom the image, animation or scene view"),
         new(PreviewGroup, "Left-drag", "Pan a zoomed view"),
         new(PreviewGroup, "B", "Toggle the scene background behind an overlay or animation"),
+        new(PreviewGroup, "Ctrl+C", "Copy image or frame to clipboard"),
 
         new(PlaybackGroup, "Space", "Play / pause the sound, video or animation"),
+        new(PlaybackGroup, "M", "Mute / unmute audio playback"),
         new(PlaybackGroup, "Left / Right", "Seek the sound player by 5 seconds, or step the animation one frame"),
         new(PlaybackGroup, "Home / End", "First / last animation frame"),
     ];
