@@ -29,6 +29,9 @@ public enum EntryKind
     /// <summary>A raw RGB565 raster from a scene archive: the scene's background or an alternate state.</summary>
     Background,
 
+    /// <summary>An RLE-encoded scene mask layer: walk-behind regions, interaction hotspots, and depth zones.</summary>
+    Mask,
+
     /// <summary>A positioned row-record image: a prop, foreground layer, title card or UI element.</summary>
     Overlay,
 

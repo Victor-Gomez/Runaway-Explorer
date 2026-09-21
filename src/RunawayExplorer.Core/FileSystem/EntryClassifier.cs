@@ -58,6 +58,16 @@ public static class EntryClassifier
             });
         }
 
+        if (RleMaskDecoder.Detect(data) is { } mask)
+        {
+            return new EntryClassification(EntryKind.Mask, new ImageInfo
+            {
+                Width = mask.Width,
+                Height = mask.Height,
+                IsMask = true,
+            });
+        }
+
         return EntryClassification.DataEntry;
     }
 }
