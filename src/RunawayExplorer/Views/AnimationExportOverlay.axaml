@@ -1,0 +1,85 @@
+﻿<UserControl x:Class="RunawayExplorer.Views.AnimationExportOverlay"
+             xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <UserControl.Styles>
+        <Style Selector="Border.settingCard">
+            <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="16,12"/>
+            <Setter Property="Margin" Value="0,0,0,8"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Border.settingCard:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}"/>
+        </Style>
+        <Style Selector="TextBlock.settingTitle">
+            <Setter Property="FontSize" Value="13.5"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="TextBlock.settingSubtitle">
+            <Setter Property="FontSize" Value="11.5"/>
+            <Setter Property="Opacity" Value="0.65"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Margin" Value="0,3,0,0"/>
+        </Style>
+    </UserControl.Styles>
+
+    <!-- Modal-style overlay: a semi-transparent scrim over the app plus a centered card. -->
+    <Border Background="#88000000" PointerPressed="Scrim_PointerPressed">
+        <Border Background="{DynamicResource SolidBackgroundFillColorBaseBrush}"
+                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                BorderThickness="1" CornerRadius="8"
+                Width="480" MaxWidth="520"
+                HorizontalAlignment="Center" VerticalAlignment="Center"
+                PointerPressed="Card_PointerPressed">
+            <Grid RowDefinitions="Auto,Auto,Auto,Auto">
+                <!-- Header with Title and Close [X] button -->
+                <DockPanel Grid.Row="0" Margin="20,12,12,8">
+                    <Button DockPanel.Dock="Right" Width="34" Height="34" Padding="0" Click="Close_Click"
+                            Background="Transparent" BorderThickness="0"
+                            ToolTip.Tip="{DynamicResource Dialog_Cancel}">
+                        <Image Source="{StaticResource CloseIcon}" Width="12" Height="12"/>
+                    </Button>
+                    <TextBlock Text="{DynamicResource ExportAnim_Header}" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                </DockPanel>
+
+                <!-- Prompt Subtitle -->
+                <TextBlock Grid.Row="1" Text="{DynamicResource ExportAnim_Prompt}"
+                           FontSize="12" Opacity="0.75" TextWrapping="Wrap" Margin="20,0,20,16"/>
+
+                <!-- Options -->
+                <StackPanel Grid.Row="2" Margin="20,0,20,8">
+                    <Border x:Name="ApngCard" Classes="settingCard" PointerPressed="ApngCard_PointerPressed">
+                        <RadioButton x:Name="ApngRadio" GroupName="ExportOverlayChoice" IsChecked="True">
+                            <StackPanel Margin="8,0,0,0">
+                                <TextBlock Text="{DynamicResource ExportAnim_Apng_Title}" Classes="settingTitle"/>
+                                <TextBlock Text="{DynamicResource ExportAnim_Apng_Desc}" Classes="settingSubtitle"/>
+                            </StackPanel>
+                        </RadioButton>
+                    </Border>
+
+                    <Border x:Name="SequenceCard" Classes="settingCard" PointerPressed="SequenceCard_PointerPressed">
+                        <RadioButton x:Name="SequenceRadio" GroupName="ExportOverlayChoice">
+                            <StackPanel Margin="8,0,0,0">
+                                <TextBlock Text="{DynamicResource ExportAnim_Sequence_Title}" Classes="settingTitle"/>
+                                <TextBlock Text="{DynamicResource ExportAnim_Sequence_Desc}" Classes="settingSubtitle"/>
+                            </StackPanel>
+                        </RadioButton>
+                    </Border>
+                </StackPanel>
+
+                <!-- Footer Buttons -->
+                <Border Grid.Row="3" Margin="20,12,20,18">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                        <Button x:Name="CancelBtn" Content="{DynamicResource Dialog_Cancel}" Click="Cancel_Click" Padding="16,6" MinWidth="80"/>
+                        <Button x:Name="ExportBtn" Classes="accent" Content="{DynamicResource Dialog_Export}" Click="Export_Click" Padding="20,6" MinWidth="88"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Border>
+    </Border>
+</UserControl>

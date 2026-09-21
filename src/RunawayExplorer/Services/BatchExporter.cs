@@ -98,6 +98,7 @@ public static class BatchExporter
         return node.Kind switch
         {
             EntryKind.Background when img is not null => $"{node.Name}_{img.Width}x{img.Height}{(img.IsMask ? "_mask" : "")}.png",
+            EntryKind.Mask when img is not null => $"{node.Name}_{img.Width}x{img.Height}_mask.png",
             EntryKind.Overlay when img is not null => $"{node.Name}_{img.Width}x{img.Height}_at_{img.X}_{img.Y}.png",
             EntryKind.Animation => $"{node.Name}.png",
             EntryKind.Music or EntryKind.Ambient or EntryKind.Cinematic or EntryKind.Voice => $"{node.Name}.wav",
@@ -122,6 +123,17 @@ public static class BatchExporter
                 DecodedImage image = info is not null && info.Width * info.Height * 2 == data.Length
                     ? RasterDecoder.Decode(data, info.Width, info.Height)
                     : RasterDecoder.TryDecode(data)?.Image ?? throw new InvalidDataException("not a raster");
+                PngWriter.Write(image, path);
+                return BatchExportResult.Exported;
+            }
+
+            case EntryKind.Mask:
+            {
+                byte[] data = vfs.ReadBytes(file);
+                ImageInfo? info = file.Image;
+                DecodedImage image = info is not null
+                    ? RleMaskDecoder.Decode(data, info.Width, info.Height)
+                    : RleMaskDecoder.TryDecode(data)?.Image ?? throw new InvalidDataException("not an RLE mask");
                 PngWriter.Write(image, path);
                 return BatchExportResult.Exported;
             }
@@ -186,17 +198,26 @@ public static class BatchExporter
         if (frames)
         {
             string dir = Path.Combine(Path.GetDirectoryName(apngPath) ?? ".", Path.GetFileNameWithoutExtension(apngPath) + "_frames");
-            Directory.CreateDirectory(dir);
-            for (int i = 0; i < asset.FrameCount; i++)
-            {
-                SpriteFrame frame = asset.DecodeFrame(i);
-                if (frame.Image is null)
-                    continue;
-                PngWriter.Write(frame.Image, Path.Combine(dir, $"frame_{i:0000}_x{frame.X}_y{frame.Y}.png"));
-                written++;
-            }
+            written = ExportImageSequence(asset, dir);
         }
         return (asset.FrameCount, written);
+    }
+
+    /// <summary>Exports each frame of the animation as an individual PNG into <paramref name="dir"/>.</summary>
+    public static int ExportImageSequence(SpriteAsset asset, string dir, string prefix = "frame")
+    {
+        ArgumentNullException.ThrowIfNull(asset);
+        Directory.CreateDirectory(dir);
+        int written = 0;
+        for (int i = 0; i < asset.FrameCount; i++)
+        {
+            SpriteFrame frame = asset.DecodeFrame(i);
+            if (frame.Image is null)
+                continue;
+            PngWriter.Write(frame.Image, Path.Combine(dir, $"{prefix}_{i:0000}_x{frame.X}_y{frame.Y}.png"));
+            written++;
+        }
+        return written;
     }
 
     private static string RelativePath(string rootPath, string fullPath)

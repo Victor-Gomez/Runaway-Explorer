@@ -10,14 +10,16 @@ namespace RunawayExplorer.Services;
 public sealed record ResourceTypeFilter(string Label, EntryKind[]? Kinds, string? IconResourceKey = null)
 {
     public static readonly ResourceTypeFilter All = new("All Types", null, "FolderClosedTypeIcon");
+    public static readonly ResourceTypeFilter AllEs = new("Todos los tipos", null, "FolderClosedTypeIcon");
 
     public static readonly IReadOnlyList<ResourceTypeFilter> Categories =
     [
         All,
         new("Backgrounds", [EntryKind.Background], "ImageTypeIcon"),
+        new("Scene masks", [EntryKind.Mask], "ImageTypeIcon"),
         new("Overlays", [EntryKind.Overlay], "ImageTypeIcon"),
         new("Animations", [EntryKind.Animation], "AnimationTypeIcon"),
-        new("All images", [EntryKind.Background, EntryKind.Overlay, EntryKind.Animation], "ImageTypeIcon"),
+        new("All images", [EntryKind.Background, EntryKind.Mask, EntryKind.Overlay, EntryKind.Animation], "ImageTypeIcon"),
         new("Music", [EntryKind.Music], "SoundTypeIcon"),
         new("Ambient & SFX", [EntryKind.Ambient], "SoundTypeIcon"),
         new("Cinematic audio", [EntryKind.Cinematic], "SoundTypeIcon"),
@@ -26,6 +28,30 @@ public sealed record ResourceTypeFilter(string Label, EntryKind[]? Kinds, string
         new("Lip-sync", [EntryKind.Viseme], "DataTypeIcon"),
         new("Data (undecoded)", [EntryKind.Data, EntryKind.GlobalData, EntryKind.RawFile], "RawFileTypeIcon"),
     ];
+
+    public static IReadOnlyList<ResourceTypeFilter> GetCategories(string? language = null)
+    {
+        bool es = RunawayExplorer.Core.Metadata.SceneCatalog.IsSpanish(language);
+        if (!es)
+            return Categories;
+
+        return
+        [
+            AllEs,
+            new("Fondos", [EntryKind.Background], "ImageTypeIcon"),
+            new("Máscaras de escena", [EntryKind.Mask], "ImageTypeIcon"),
+            new("Capas", [EntryKind.Overlay], "ImageTypeIcon"),
+            new("Animaciones", [EntryKind.Animation], "AnimationTypeIcon"),
+            new("Todas las imágenes", [EntryKind.Background, EntryKind.Mask, EntryKind.Overlay, EntryKind.Animation], "ImageTypeIcon"),
+            new("Música", [EntryKind.Music], "SoundTypeIcon"),
+            new("Sonido ambiente y efectos", [EntryKind.Ambient], "SoundTypeIcon"),
+            new("Audio de cinemáticas", [EntryKind.Cinematic], "SoundTypeIcon"),
+            new("Voces", [EntryKind.Voice], "SoundTypeIcon"),
+            new("Vídeos", [EntryKind.Video], "VideoTypeIcon"),
+            new("Sincronización labial", [EntryKind.Viseme], "DataTypeIcon"),
+            new("Datos (sin decodificar)", [EntryKind.Data, EntryKind.GlobalData, EntryKind.RawFile], "RawFileTypeIcon"),
+        ];
+    }
 
     public bool Matches(FsNode node)
     {

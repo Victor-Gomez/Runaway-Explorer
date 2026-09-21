@@ -19,6 +19,7 @@ public sealed class FsNodeViewModel : INotifyPropertyChanged
     private static readonly Dictionary<EntryKind, string> KindIcons = new()
     {
         [EntryKind.Background] = "ImageTypeIcon",
+        [EntryKind.Mask] = "ImageTypeIcon",
         [EntryKind.Overlay] = "ImageTypeIcon",
         [EntryKind.Animation] = "AnimationTypeIcon",
         [EntryKind.Data] = "DataTypeIcon",
@@ -183,6 +184,17 @@ public sealed class FsNodeViewModel : INotifyPropertyChanged
 
         foreach (FsNode file in _vfs.GetFiles(Node))
             Children.Add(new FsNodeViewModel(file, _vfs));
+    }
+
+    /// <summary>Notifies that DisplayName has changed, recursively updating children.</summary>
+    public void NotifyDisplayNameChanged()
+    {
+        OnPropertyChanged(nameof(DisplayName));
+        foreach (FsNodeViewModel child in Children)
+        {
+            if (!child.IsPlaceholder)
+                child.NotifyDisplayNameChanged();
+        }
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
