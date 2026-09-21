@@ -79,6 +79,8 @@ public sealed class ZoomController
 
     public void Out() { FitToWindow = false; Set(Zoom / 1.25); }
 
+    public void Zoom100() { FitToWindow = false; Set(1.0); }
+
     /// <summary>
     /// "Fit to window, but never more than 8x": the largest zoom that keeps the content inside the
     /// viewport on both axes, capped so tiny icons don't blow up to fill the panel. On first load the

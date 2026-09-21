@@ -11,10 +11,17 @@ public static class SyntheticAssets
 {
     public static ushort Rgb565(int r8, int g8, int b8) => (ushort)(((r8 >> 3) << 11) | ((g8 >> 2) << 5) | (b8 >> 3));
 
+    public static ushort DefaultRasterPixel(int x, int y, int width, int height)
+    {
+        int hx = (int)(((uint)(x * 2654435761u) >> 24)) * 180 / 255;
+        int v = hx + y * 60 / Math.Max(1, height);
+        return Rgb565(v, v, v);
+    }
+
     /// <summary>A raster with a distinct vertical gradient per column, so the stride detector has something to lock onto.</summary>
     public static byte[] Raster(int width, int height, Func<int, int, ushort>? pixel = null)
     {
-        pixel ??= (x, y) => Rgb565((x * 7) & 0xFF, (x * 13 + y) & 0xFF, (y * 3) & 0xFF);
+        pixel ??= (x, y) => DefaultRasterPixel(x, y, width, height);
         var data = new byte[width * height * 2];
         for (int y = 0; y < height; y++)
             for (int x = 0; x < width; x++)

@@ -28,6 +28,7 @@ public static class KeyboardShortcuts
         new(PreviewGroup, "Ctrl+=", "Zoom in (image, animation and scene views)"),
         new(PreviewGroup, "Ctrl+-", "Zoom out"),
         new(PreviewGroup, "Ctrl+0", "Fit to window"),
+        new(PreviewGroup, "Ctrl+1", "Zoom to 100% (actual size)"),
         new(PreviewGroup, "Mouse wheel", "Zoom the image, animation or scene view"),
         new(PreviewGroup, "Left-drag", "Pan a zoomed view"),
         new(PreviewGroup, "B", "Toggle the scene background behind an overlay or animation"),

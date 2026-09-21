@@ -14,7 +14,7 @@ namespace RunawayExplorer.Services;
 /// </summary>
 public static class BitmapConverter
 {
-    public static Bitmap? ToBitmap(DecodedImage? image)
+    public static Bitmap? ToBitmap(DecodedImage? image, bool grayscale = false)
     {
         if (image is null || image.Width <= 0 || image.Height <= 0)
             return null;
@@ -27,8 +27,42 @@ public static class BitmapConverter
 
         int srcStride = image.Width * 4;
         using ILockedFramebuffer fb = wb.Lock();
-        for (int y = 0; y < image.Height; y++)
-            Marshal.Copy(image.Pixels, y * srcStride, fb.Address + y * fb.RowBytes, srcStride);
+        if (!grayscale)
+        {
+            for (int y = 0; y < image.Height; y++)
+                Marshal.Copy(image.Pixels, y * srcStride, fb.Address + y * fb.RowBytes, srcStride);
+        }
+        else
+        {
+            unsafe
+            {
+                byte* dstBase = (byte*)fb.Address;
+                fixed (byte* srcBase = image.Pixels)
+                {
+                    for (int y = 0; y < image.Height; y++)
+                    {
+                        byte* srcRow = srcBase + (y * srcStride);
+                        byte* dstRow = dstBase + (y * fb.RowBytes);
+                        for (int x = 0; x < image.Width; x++)
+                        {
+                            int px = x * 4;
+                            byte b = srcRow[px + 0];
+                            byte g = srcRow[px + 1];
+                            byte r = srcRow[px + 2];
+                            byte a = srcRow[px + 3];
+
+                            // Standard ITU-R BT.601 luma formula:
+                            byte gray = (byte)((r * 77 + g * 150 + b * 29) >> 8);
+
+                            dstRow[px + 0] = gray;
+                            dstRow[px + 1] = gray;
+                            dstRow[px + 2] = gray;
+                            dstRow[px + 3] = a;
+                        }
+                    }
+                }
+            }
+        }
 
         return wb;
     }

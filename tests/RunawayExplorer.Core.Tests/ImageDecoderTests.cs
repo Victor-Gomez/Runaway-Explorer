@@ -21,10 +21,12 @@ public class Rgb565Tests
 
 public class RasterDecoderTests
 {
+
     [Theory]
     [InlineData(204, 120)]
     [InlineData(282, 188)]
     [InlineData(1372, 600)]
+    [InlineData(2592, 600)]
     public void DetectsTheWidthOfAHeaderlessRaster(int width, int height)
     {
         byte[] data = Raster(width, height);
@@ -36,6 +38,51 @@ public class RasterDecoderTests
         Assert.Equal(height, info.Value.Height);
         Assert.True(info.Value.Sharpness >= RasterDecoder.SharpnessMin);
         Assert.False(info.Value.IsMask);
+    }
+
+    [Fact]
+    public void DetectsDoubleScreenWidthRaster()
+    {
+        int width = 2048;
+        int height = 900;
+        byte[] data = Raster(width, height);
+
+        RasterInfo? info = RasterDecoder.Detect(data);
+
+        Assert.NotNull(info);
+        Assert.Equal(width, info.Value.Width);
+        Assert.Equal(height, info.Value.Height);
+        Assert.True(info.Value.Sharpness >= RasterDecoder.SharpnessMin);
+    }
+
+    [Fact]
+    public void DetectsTallRasterWithLeadingZeroPadding()
+    {
+        int width = 1024;
+        int height = 2062;
+        byte[] data = Raster(width, height, (x, y) =>
+            y < 658 ? (ushort)0 : DefaultRasterPixel(x, y, width, height));
+
+        RasterInfo? info = RasterDecoder.Detect(data);
+
+        Assert.NotNull(info);
+        Assert.Equal(width, info.Value.Width);
+        Assert.Equal(height, info.Value.Height);
+        Assert.True(info.Value.Sharpness >= RasterDecoder.SharpnessMin);
+    }
+
+    [Fact]
+    public void PrefersFundamentalWidthOverHarmonicMultiple()
+    {
+        int width = 1024;
+        int height = 2062;
+        byte[] data = Raster(width, height);
+
+        RasterInfo? info = RasterDecoder.Detect(data);
+
+        Assert.NotNull(info);
+        Assert.Equal(1024, info.Value.Width);
+        Assert.Equal(2062, info.Value.Height);
     }
 
     [Fact]
@@ -78,7 +125,7 @@ public class RasterDecoderTests
         Assert.Equal(204, image.Width);
         Assert.Equal(120, image.Height);
         (byte r, byte g, byte b, byte a) = Pixel(image, 10, 5);
-        ushort expected = Rgb565((10 * 7) & 0xFF, (10 * 13 + 5) & 0xFF, (5 * 3) & 0xFF);
+        ushort expected = DefaultRasterPixel(10, 5, 204, 120);
         Assert.Equal(((expected >> 11) << 3, ((expected >> 5) & 0x3F) << 2, (expected & 0x1F) << 3, 255), (r, g, b, a));
     }
 
@@ -264,5 +311,64 @@ public class EntryClassifierTests
         c = EntryClassifier.Classify(Sprite([new Frame([(5, 6, [1])]), new Frame([(7, 8, [1])])], sharedBox: false));
         Assert.Equal(2, c.Image!.Frames);
         Assert.Equal((5, 6, 3, 3), (c.Image.X, c.Image.Y, c.Image.Width, c.Image.Height));
+    }
+}
+
+public class SpecificSceneRasterTests
+{
+    [Fact]
+    public void RealGameScenes_ClassifyCorrectlyIfPresent()
+    {
+        string dir = @"F:\Games\Steam\steamapps\common\Runaway A Road Adventure\Resource";
+        if (!Directory.Exists(dir))
+            return;
+
+        // RESOURCE.H40 e00 must be 2592x600 Background
+        string h40Path = Path.Combine(dir, "RESOURCE.H40");
+        if (File.Exists(h40Path))
+        {
+            using var fs = File.OpenRead(h40Path);
+            var e0 = SceneArchive.ReadEntries(fs).FirstOrDefault(e => e.Index == 0);
+            var data = new byte[e0.Size];
+            fs.Position = e0.Offset;
+            fs.ReadExactly(data);
+
+            var cls = EntryClassifier.Classify(data);
+            Assert.Equal(EntryKind.Background, cls.Kind);
+            Assert.Equal(2592, cls.Image!.Width);
+            Assert.Equal(600, cls.Image.Height);
+        }
+
+        // RESOURCE.I01 e00 must be 2048x900 Background (not interlaced 1024x1800)
+        string i01Path = Path.Combine(dir, "RESOURCE.I01");
+        if (File.Exists(i01Path))
+        {
+            using var fs = File.OpenRead(i01Path);
+            var e0 = SceneArchive.ReadEntries(fs).FirstOrDefault(e => e.Index == 0);
+            var data = new byte[e0.Size];
+            fs.Position = e0.Offset;
+            fs.ReadExactly(data);
+
+            var cls = EntryClassifier.Classify(data);
+            Assert.Equal(EntryKind.Background, cls.Kind);
+            Assert.Equal(2048, cls.Image!.Width);
+            Assert.Equal(900, cls.Image.Height);
+        }
+
+        // RESOURCE.I03 e00 must be 1024x2062 Background (credits roll)
+        string i03Path = Path.Combine(dir, "RESOURCE.I03");
+        if (File.Exists(i03Path))
+        {
+            using var fs = File.OpenRead(i03Path);
+            var e0 = SceneArchive.ReadEntries(fs).FirstOrDefault(e => e.Index == 0);
+            var data = new byte[e0.Size];
+            fs.Position = e0.Offset;
+            fs.ReadExactly(data);
+
+            var cls = EntryClassifier.Classify(data);
+            Assert.Equal(EntryKind.Background, cls.Kind);
+            Assert.Equal(1024, cls.Image!.Width);
+            Assert.Equal(2062, cls.Image.Height);
+        }
     }
 }
