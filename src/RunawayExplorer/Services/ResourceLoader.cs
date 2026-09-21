@@ -38,6 +38,22 @@ public static class ResourceLoader
                     return new ImageResource(image, 0, 0, false, info.IsMask ? "mask layer" : "background");
                 }
 
+                case EntryKind.Mask:
+                {
+                    byte[] data = vfs.ReadBytes(node);
+                    byte[]? table1536 = vfs.SceneAttributeTableFor(node);
+                    byte[]? idMap = table1536 is not null ? RleMaskDecoder.ExtractObjectMapping(table1536) : null;
+                    ImageInfo? info = node.Image;
+                    if (info is null)
+                    {
+                        if (RleMaskDecoder.TryDecode(data, idMap) is not { } md)
+                            return new ErrorResource($"'{node.GetPath()}' no longer parses as an RLE scene mask.");
+                        return new ImageResource(md.Image, 0, 0, true, "scene mask");
+                    }
+                    DecodedImage image = RleMaskDecoder.Decode(data, info.Width, info.Height, idMap);
+                    return new ImageResource(image, 0, 0, true, "scene mask");
+                }
+
                 case EntryKind.Overlay:
                 {
                     byte[] data = vfs.ReadBytes(node);

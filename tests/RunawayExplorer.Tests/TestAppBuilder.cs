@@ -34,6 +34,10 @@ public sealed class TestApp : Application
         {
             Source = new Uri("avares://RunawayExplorer/Assets/Icons/VectorIcons.axaml"),
         });
+        Resources.MergedDictionaries.Add(new ResourceInclude((Uri?)null)
+        {
+            Source = new Uri("avares://RunawayExplorer/Assets/Localization/Strings.en.axaml"),
+        });
 
         // MainWindow.axaml binds the tree's icons through this converter as a StaticResource, which the
         // real App.axaml supplies. StaticResource throws when unresolved (unlike DynamicResource), so

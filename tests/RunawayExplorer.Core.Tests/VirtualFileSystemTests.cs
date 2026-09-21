@@ -71,12 +71,20 @@ public class VirtualFileSystemTests
 
         FsNode h09 = scenes.Children[0];
         Assert.Equal([EntryKind.Background, EntryKind.Data, EntryKind.Overlay, EntryKind.Animation], h09.Children.Select(c => c.Kind));
-        Assert.Equal("e02  overlay 1×1 at 320,80", h09.Children[2].DisplayName);
-        Assert.Equal("e03  animation, 2 frames, 2×2", h09.Children[3].DisplayName);
-        Assert.Equal("e00  background 204×120", h09.Children[0].DisplayName);
+        Assert.Equal("overlay 1×1 at 320,80 (e02)", h09.Children[2].DisplayName);
+        Assert.Equal("animation, 2 frames, 2×2 (e03)", h09.Children[3].DisplayName);
+        Assert.Equal("background 204×120 (e00)", h09.Children[0].DisplayName);
 
         Assert.Equal(2, vfs.Summary.SceneArchives);
         Assert.Equal((2, 1, 1, 1), (vfs.Summary.Backgrounds, vfs.Summary.Overlays, vfs.Summary.Animations, vfs.Summary.DataEntries));
+
+        // In the tree, items inside a folder/resource are ordered by type with code/data last:
+        List<FsNode> files = vfs.GetFiles(h09).ToList();
+        Assert.Equal([EntryKind.Background, EntryKind.Overlay, EntryKind.Animation, EntryKind.Data], files.Select(c => c.Kind));
+        Assert.Equal("e00", files[0].Name);
+        Assert.Equal("e02", files[1].Name);
+        Assert.Equal("e03", files[2].Name);
+        Assert.Equal("e01", files[3].Name);
     }
 
     [Fact]
@@ -235,5 +243,28 @@ public class VirtualFileSystemTests
         {
             Directory.Delete(dir, recursive: true);
         }
+    }
+
+    [Fact]
+    public void ApplyLanguage_UpdatesDisplayNamesAcrossTree()
+    {
+        using var install = new FakeInstall();
+        VirtualFileSystem vfs = VirtualFileSystem.Init(install.Root, language: "en");
+
+        FsNode scenes = vfs.FindNode(vfs.Root, "\\Scenes")!;
+        Assert.Equal("Scenes", scenes.DisplayName);
+
+        FsNode h09 = vfs.FindNode(vfs.Root, "\\Scenes\\RESOURCE.H09")!;
+        Assert.Contains("Hospital Desk & Nightstand", h09.DisplayName);
+
+        FsNode e00 = vfs.FindNode(vfs.Root, "\\Scenes\\RESOURCE.H09\\e00")!;
+        Assert.Equal("background 204×120 (e00)", e00.DisplayName);
+
+        // Switch to Spanish
+        vfs.ApplyLanguage("es");
+
+        Assert.Equal("Escenas", scenes.DisplayName);
+        Assert.Contains("Escritorio y mesita del hospital", h09.DisplayName);
+        Assert.Equal("fondo de escena 204×120 (e00)", e00.DisplayName);
     }
 }

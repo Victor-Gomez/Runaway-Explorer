@@ -1,4 +1,5 @@
 using RunawayExplorer.Core.Formats;
+using RunawayExplorer.Core.Metadata;
 
 namespace RunawayExplorer.Core.FileSystem;
 
@@ -40,6 +41,8 @@ public sealed class VirtualFileSystem
 
     private readonly Dictionary<string, DecodedImage?> _backgroundCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _backgroundGate = new();
+    private readonly Dictionary<string, byte[]?> _attributeTableCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _attributeTableGate = new();
 
     private VirtualFileSystem(string baseDir, FsNode root, VideoKeyfile? keyfile)
     {
@@ -52,6 +55,9 @@ public sealed class VirtualFileSystem
 
     public FsNode Root { get; }
 
+    /// <summary>Active metadata and display language (e.g. "en", "es").</summary>
+    public string Language { get; private set; } = SceneCatalog.DefaultLanguage;
+
     /// <summary>The parsed <c>DATAVC00</c> keyfile, or <see langword="null"/> when the install has none.</summary>
     public VideoKeyfile? Keyfile { get; }
 
@@ -62,6 +68,7 @@ public sealed class VirtualFileSystem
     {
         public int SceneArchives { get; set; }
         public int Backgrounds { get; set; }
+        public int Masks { get; set; }
         public int Overlays { get; set; }
         public int Animations { get; set; }
         public int DataEntries { get; set; }
@@ -72,7 +79,7 @@ public sealed class VirtualFileSystem
         public bool FromCache { get; set; }
 
         public override string ToString() =>
-            $"{SceneArchives} scenes: {Backgrounds} backgrounds, {Overlays} overlays, {Animations} animations; " +
+            $"{SceneArchives} scenes: {Backgrounds} backgrounds, {Masks} masks, {Overlays} overlays, {Animations} animations; " +
             $"{AudioClips} audio clips, {VoiceClips} voice lines, {Videos} videos, {Visemes} lip-sync tracks";
     }
 
@@ -88,6 +95,7 @@ public sealed class VirtualFileSystem
         string baseDir,
         Action<string>? progress = null,
         ScanCache? cache = null,
+        string? language = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(baseDir);
@@ -98,6 +106,7 @@ public sealed class VirtualFileSystem
             throw new DirectoryNotFoundException($"No 'Resource' folder under {baseDir}. Pick the game's install folder (the one containing Runaway.exe).");
 
         cache ??= ScanCache.Ephemeral();
+        string activeLanguage = language ?? SceneCatalog.DefaultLanguage;
 
         var root = new FsNode { NodeType = FsNodeType.Root | FsNodeType.Directory, Name = Path.GetFileName(baseDir.TrimEnd(Path.DirectorySeparatorChar)) };
         var summary = new ScanSummary();
@@ -116,19 +125,30 @@ public sealed class VirtualFileSystem
             }
         }
 
-        var vfs = new VirtualFileSystem(baseDir, root, keyfile);
+        var vfs = new VirtualFileSystem(baseDir, root, keyfile)
+        {
+            Language = activeLanguage
+        };
 
         string[] resourceFiles = Directory.GetFiles(resourceDir);
         Array.Sort(resourceFiles, StringComparer.OrdinalIgnoreCase);
 
         FsNode scenes = Folder(root, ScenesFolder);
+        scenes.FriendlyName = SceneCatalog.GetCategoryTitle(ScenesFolder, activeLanguage);
         FsNode music = Folder(root, MusicFolder);
+        music.FriendlyName = SceneCatalog.GetCategoryTitle(MusicFolder, activeLanguage);
         FsNode ambient = Folder(root, AmbientFolder);
+        ambient.FriendlyName = SceneCatalog.GetCategoryTitle(AmbientFolder, activeLanguage);
         FsNode cinematic = Folder(root, CinematicFolder);
+        cinematic.FriendlyName = SceneCatalog.GetCategoryTitle(CinematicFolder, activeLanguage);
         FsNode voice = Folder(root, VoiceFolder);
+        voice.FriendlyName = SceneCatalog.GetCategoryTitle(VoiceFolder, activeLanguage);
         FsNode lipSync = Folder(root, LipSyncFolder);
+        lipSync.FriendlyName = SceneCatalog.GetCategoryTitle(LipSyncFolder, activeLanguage);
         FsNode video = Folder(root, VideoFolder);
+        video.FriendlyName = SceneCatalog.GetCategoryTitle(VideoFolder, activeLanguage);
         FsNode global = Folder(root, GlobalFolder);
+        global.FriendlyName = SceneCatalog.GetCategoryTitle(GlobalFolder, activeLanguage);
 
         // Scene archives are the expensive part; classify them in parallel, then attach in name order.
         List<string> sceneArchives = resourceFiles.Where(f => SceneArchive.IsSceneArchiveName(Path.GetFileName(f))).ToList();
@@ -145,7 +165,7 @@ public sealed class VirtualFileSystem
         {
             string path = sceneArchives[i];
             progress?.Invoke($"Scanning {Path.GetFileName(path)}  ({Interlocked.Increment(ref done)}/{sceneArchives.Count})");
-            (FsNode node, bool fromCache) = BuildSceneArchive(path, cache, cancellationToken);
+            (FsNode node, bool fromCache) = BuildSceneArchive(path, cache, activeLanguage, cancellationToken);
             sceneNodes[i] = node;
             if (fromCache)
                 anyFromCache = true;
@@ -162,6 +182,7 @@ public sealed class VirtualFileSystem
                 switch (child.Kind)
                 {
                     case EntryKind.Background: summary.Backgrounds++; break;
+                    case EntryKind.Mask: summary.Masks++; break;
                     case EntryKind.Overlay: summary.Overlays++; break;
                     case EntryKind.Animation: summary.Animations++; break;
                     default: summary.DataEntries++; break;
@@ -183,17 +204,17 @@ public sealed class VirtualFileSystem
             if (upper.StartsWith("RESOURCE.M", StringComparison.Ordinal))
             {
                 progress?.Invoke($"Reading {name}");
-                summary.AudioClips += Attach(music, BuildAudioArchive(path, EntryKind.Music, MusicPcm, dedupe: false)).Children.Count;
+                summary.AudioClips += Attach(music, BuildAudioArchive(path, EntryKind.Music, MusicPcm, dedupe: false, activeLanguage)).Children.Count;
             }
             else if (upper.StartsWith("RESOURCE.S", StringComparison.Ordinal))
             {
                 progress?.Invoke($"Reading {name}");
-                summary.AudioClips += Attach(ambient, BuildAudioArchive(path, EntryKind.Ambient, AmbientPcm, dedupe: false)).Children.Count;
+                summary.AudioClips += Attach(ambient, BuildAudioArchive(path, EntryKind.Ambient, AmbientPcm, dedupe: false, activeLanguage)).Children.Count;
             }
             else if (upper == "RESOURCE.002")
             {
                 progress?.Invoke($"Reading {name}");
-                summary.AudioClips += Attach(cinematic, BuildAudioArchive(path, EntryKind.Cinematic, CinematicPcm, dedupe: true)).Children.Count;
+                summary.AudioClips += Attach(cinematic, BuildAudioArchive(path, EntryKind.Cinematic, CinematicPcm, dedupe: true, activeLanguage)).Children.Count;
             }
             else if (upper == "RESOURCE.004")
             {
@@ -230,13 +251,50 @@ public sealed class VirtualFileSystem
         return vfs;
     }
 
-    private static (FsNode Node, bool FromCache) BuildSceneArchive(string path, ScanCache cache, CancellationToken cancellationToken)
+    /// <summary>Updates display names of all nodes in memory to match the specified language.</summary>
+    public void ApplyLanguage(string language)
+    {
+        Language = language;
+        UpdateLanguageRecursive(Root, language);
+    }
+
+    private void UpdateLanguageRecursive(FsNode node, string language)
+    {
+        if (node == Root)
+        {
+            foreach (FsNode child in node.Children)
+                UpdateLanguageRecursive(child, language);
+            return;
+        }
+
+        if (node.Parent == Root && node.IsDirectory)
+        {
+            node.FriendlyName = SceneCatalog.GetCategoryTitle(node.Name, language);
+        }
+        else if (node.IsDirectory && node.Parent?.Parent == Root)
+        {
+            if (node.Parent.Name == ScenesFolder)
+                node.FriendlyName = SceneCatalog.GetSceneTitle(node.Name, language);
+            else if (node.Parent.Name is MusicFolder or AmbientFolder or CinematicFolder)
+                node.FriendlyName = SceneCatalog.GetAudioTitle(node.Name, language);
+        }
+        else if (node.IsFile && node.Parent?.Parent?.Name == ScenesFolder)
+        {
+            node.FriendlyName = SceneCatalog.FormatSceneEntryLabel(node, language);
+        }
+
+        foreach (FsNode child in node.Children)
+            UpdateLanguageRecursive(child, language);
+    }
+
+    private static (FsNode Node, bool FromCache) BuildSceneArchive(string path, ScanCache cache, string language, CancellationToken cancellationToken)
     {
         var node = new FsNode
         {
             NodeType = FsNodeType.Directory,
             Kind = EntryKind.Folder,
             Name = Path.GetFileName(path),
+            FriendlyName = SceneCatalog.GetSceneTitle(Path.GetFileName(path), language),
             ArchivePath = path,
             Size = new FileInfo(path).Length,
         };
@@ -281,7 +339,7 @@ public sealed class VirtualFileSystem
                 ArchivePath = path,
                 Image = e.ToImageInfo(),
             };
-            child.FriendlyName = SceneEntryLabel(child);
+            child.FriendlyName = SceneCatalog.FormatSceneEntryLabel(child, language);
             Attach(node, child);
         }
 
@@ -289,27 +347,16 @@ public sealed class VirtualFileSystem
     }
 
     /// <summary>The tree label for a scene entry: index plus the decoded facts that identify it at a glance.</summary>
-    public static string SceneEntryLabel(FsNode entry)
-    {
-        ImageInfo? img = entry.Image;
-        return entry.Kind switch
-        {
-            EntryKind.Background when img is not null =>
-                $"{entry.Name}  background {img.Width}×{img.Height}{(img.IsMask ? " (mask)" : "")}",
-            EntryKind.Overlay when img is not null =>
-                $"{entry.Name}  overlay {img.Width}×{img.Height} at {img.X},{img.Y}",
-            EntryKind.Animation when img is not null =>
-                $"{entry.Name}  animation, {img.Frames} frame{(img.Frames == 1 ? "" : "s")}, {img.Width}×{img.Height}",
-            _ => $"{entry.Name}  data, {FormatSize(entry.Size)}",
-        };
-    }
+    public static string SceneEntryLabel(FsNode entry) =>
+        SceneCatalog.FormatSceneEntryLabel(entry, null);
 
-    private static FsNode BuildAudioArchive(string path, EntryKind kind, AudioInfo pcm, bool dedupe)
+    private static FsNode BuildAudioArchive(string path, EntryKind kind, AudioInfo pcm, bool dedupe, string language)
     {
         var node = new FsNode
         {
             NodeType = FsNodeType.Directory,
             Name = Path.GetFileName(path),
+            FriendlyName = SceneCatalog.GetAudioTitle(Path.GetFileName(path), language),
             ArchivePath = path,
             Size = new FileInfo(path).Length,
         };
@@ -515,7 +562,30 @@ public sealed class VirtualFileSystem
 
     public IEnumerable<FsNode> GetDirectories(FsNode node) => node.Children.Where(c => c.IsDirectory);
 
-    public IEnumerable<FsNode> GetFiles(FsNode node) => node.Children.Where(c => c.IsFile);
+    public IEnumerable<FsNode> GetFiles(FsNode node) =>
+        node.Children
+            .Where(c => c.IsFile)
+            .OrderBy(c => GetTypeOrder(c.Kind))
+            .ThenBy(c => c.EntryIndex >= 0 ? c.EntryIndex : int.MaxValue)
+            .ThenBy(c => c.DisplayName, StringComparer.OrdinalIgnoreCase);
+
+    internal static int GetTypeOrder(EntryKind kind) => kind switch
+    {
+        EntryKind.Background => 1,
+        EntryKind.Mask => 2,
+        EntryKind.Overlay => 3,
+        EntryKind.Animation => 4,
+        EntryKind.Music => 5,
+        EntryKind.Ambient => 6,
+        EntryKind.Cinematic => 7,
+        EntryKind.Voice => 8,
+        EntryKind.Video => 9,
+        EntryKind.Viseme => 10,
+        EntryKind.Data => 99,
+        EntryKind.GlobalData => 100,
+        EntryKind.RawFile => 101,
+        _ => 50,
+    };
 
     /// <summary>Every file node under <paramref name="node"/>, depth-first in tree order.</summary>
     public IEnumerable<FsNode> EnumerateFiles(FsNode node)
@@ -604,6 +674,41 @@ public sealed class VirtualFileSystem
         lock (_backgroundGate)
             _backgroundCache[archive.ArchivePath] = image;
         return image;
+    }
+
+    /// <summary>
+    /// The scene archive's 1536-byte attribute table (Entry 2) for any node inside a scene archive, read once
+    /// and cached. <see langword="null"/> when not in a scene archive or no 1536-byte entry exists.
+    /// </summary>
+    public byte[]? SceneAttributeTableFor(FsNode node)
+    {
+        FsNode? archive = node.IsDirectory && node.Parent?.Name == ScenesFolder ? node : node.Parent;
+        if (archive is null || archive.Parent?.Name != ScenesFolder || archive.ArchivePath is null)
+            return null;
+
+        lock (_attributeTableGate)
+        {
+            if (_attributeTableCache.TryGetValue(archive.ArchivePath, out byte[]? cached))
+                return cached;
+        }
+
+        FsNode? tableEntry = archive.Children.FirstOrDefault(c => c.Size == 1536);
+        byte[]? tableBytes = null;
+        if (tableEntry is not null)
+        {
+            try
+            {
+                tableBytes = ReadBytes(tableEntry);
+            }
+            catch
+            {
+                // Ignore missing/corrupt table and return null
+            }
+        }
+
+        lock (_attributeTableGate)
+            _attributeTableCache[archive.ArchivePath] = tableBytes;
+        return tableBytes;
     }
 
     /// <summary>Writes the restored Bink stream for a <see cref="EntryKind.Video"/> node.</summary>

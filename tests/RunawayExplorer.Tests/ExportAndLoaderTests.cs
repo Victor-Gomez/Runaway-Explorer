@@ -41,6 +41,70 @@ public class ResourceLoaderTests
     }
 
     [Fact]
+    public void MaskLoadsAsPositionedImageResource()
+    {
+        (VirtualFileSystem vfs, FakeInstall install, TempFileTracker temp) = Open();
+        using (install)
+        {
+            string tempMaskPath = Path.Combine(install.Root, "mask_test.bin");
+            byte[] maskBytes = SyntheticMaskBytes(1024, 600);
+            File.WriteAllBytes(tempMaskPath, maskBytes);
+
+            var maskNode = new FsNode
+            {
+                Name = "e01",
+                Kind = EntryKind.Mask,
+                ArchivePath = tempMaskPath,
+                Offset = 0,
+                Size = maskBytes.Length,
+                NodeType = FsNodeType.File,
+                Image = new ImageInfo { Width = 1024, Height = 600, IsMask = true }
+            };
+
+            var res = Assert.IsType<ImageResource>(ResourceLoader.Load(maskNode, vfs, new AppSettings(), temp));
+            Assert.True(res.Positioned);
+            Assert.Equal("scene mask", res.Kind);
+            Assert.Equal(1024, res.Image.Width);
+            Assert.Equal(600, res.Image.Height);
+
+            var maskNodeNoInfo = new FsNode
+            {
+                Name = "e01",
+                Kind = EntryKind.Mask,
+                ArchivePath = tempMaskPath,
+                Offset = 0,
+                Size = maskBytes.Length,
+                NodeType = FsNodeType.File,
+                Image = null
+            };
+
+            var resNoInfo = Assert.IsType<ImageResource>(ResourceLoader.Load(maskNodeNoInfo, vfs, new AppSettings(), temp));
+            Assert.True(resNoInfo.Positioned);
+            Assert.Equal("scene mask", resNoInfo.Kind);
+            Assert.Equal(1024, resNoInfo.Image.Width);
+            Assert.Equal(600, resNoInfo.Image.Height);
+        }
+    }
+
+    private static byte[] SyntheticMaskBytes(int width, int height)
+    {
+        using var ms = new MemoryStream();
+        Span<byte> u16 = stackalloc byte[2];
+        for (int y = 0; y < height; y++)
+        {
+            ushort left = (ushort)(width / 2);
+            ushort right = (ushort)(width - left);
+            ms.WriteByte(1);
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(u16, left);
+            ms.Write(u16);
+            ms.WriteByte(2);
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(u16, right);
+            ms.Write(u16);
+        }
+        return ms.ToArray();
+    }
+
+    [Fact]
     public void SoundsBecomeWavTempFiles_WithTheVoiceRateFromSettings()
     {
         (VirtualFileSystem vfs, FakeInstall install, TempFileTracker temp) = Open();
@@ -179,10 +243,21 @@ public class BatchExporterTests
     }
 
     [Fact]
-    public void VideoNamesKeepTheNumericSuffix()
+    public void ExportImageSequence_WritesIndividualFrames()
     {
-        var node = new FsNode { Name = "DATAVB02.003", Kind = EntryKind.Video };
-        Assert.Equal("DATAVB02_003.bik", BatchExporter.ExportFileName(node));
+        using var install = new FakeInstall();
+        VirtualFileSystem vfs = VirtualFileSystem.Init(install.Root);
+        FsNode animNode = vfs.FindNode(vfs.Root, "\\Scenes\\RESOURCE.H09\\e03")!;
+        byte[] data = vfs.ReadBytes(animNode);
+        SpriteAsset asset = SpriteAsset.Parse(data)!;
+
+        string outDir = Path.Combine(install.Root, "frames_out");
+        int written = BatchExporter.ExportImageSequence(asset, outDir, "custom_frame");
+
+        Assert.True(written > 0);
+        Assert.Equal(asset.FrameCount, written);
+        string[] files = Directory.GetFiles(outDir, "custom_frame_*.png");
+        Assert.Equal(written, files.Length);
     }
 
     private static int IndexOf(byte[] haystack, ReadOnlySpan<byte> needle)

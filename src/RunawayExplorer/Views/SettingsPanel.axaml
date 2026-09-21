@@ -77,10 +77,10 @@
                 <DockPanel Grid.Row="0" Margin="20,10,10,8">
                     <Button DockPanel.Dock="Right" Width="34" Height="34" Padding="0" Click="Close_Click"
                             Background="Transparent" BorderThickness="0"
-                            ToolTip.Tip="Close settings (Esc)">
+                            ToolTip.Tip="{DynamicResource ToolTip_CloseSettings}">
                         <Image Source="{StaticResource CloseIcon}" Width="12" Height="12"/>
                     </Button>
-                    <TextBlock Text="Settings" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    <TextBlock Text="{DynamicResource Settings_Title}" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center"/>
                 </DockPanel>
 
                 <Grid Grid.Row="1" ColumnDefinitions="220,*">
@@ -88,11 +88,11 @@
                              Background="Transparent"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                              SelectionChanged="CategoryList_SelectionChanged">
-                        <ListBoxItem Classes="settingsNav" Content="Playback" Tag="Playback" IsSelected="True"/>
-                        <ListBoxItem Classes="settingsNav" Content="Export" Tag="Export"/>
-                        <ListBoxItem Classes="settingsNav" Content="Scanning" Tag="Scanning"/>
-                        <ListBoxItem Classes="settingsNav" Content="Appearance" Tag="Appearance"/>
-                        <ListBoxItem Classes="settingsNav" Content="Updates" Tag="Updates"/>
+                        <ListBoxItem Classes="settingsNav" Content="{DynamicResource Settings_Nav_Playback}" Tag="Playback" IsSelected="True"/>
+                        <ListBoxItem Classes="settingsNav" Content="{DynamicResource Settings_Nav_Export}" Tag="Export"/>
+                        <ListBoxItem Classes="settingsNav" Content="{DynamicResource Settings_Nav_Scanning}" Tag="Scanning"/>
+                        <ListBoxItem Classes="settingsNav" Content="{DynamicResource Settings_Nav_Appearance}" Tag="Appearance"/>
+                        <ListBoxItem Classes="settingsNav" Content="{DynamicResource Settings_Nav_Updates}" Tag="Updates"/>
                     </ListBox>
 
                     <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
@@ -112,7 +112,7 @@
                                                        ValueChanged="Fps_ValueChanged"/>
                                         <StackPanel>
                                             <TextBlock Text="Frame rate" Classes="settingTitle"/>
-                                            <TextBlock Text="Frames per second for playback and for exported animated PNGs. The game files store no timing, so this is a choice, not a fact -- 12 looks right for most cycles." Classes="settingSubtitle"/>
+                                            <TextBlock Text="Frames per second for playback and for exported animated PNGs. The game files store no timing, so this is a choice, not a fact -- 15 looks right for most cycles." Classes="settingSubtitle"/>
                                         </StackPanel>
                                     </DockPanel>
                                 </Border>
@@ -138,11 +138,19 @@
                                 </Border>
                                 <Border Classes="settingCard">
                                     <DockPanel>
-                                        <CheckBox x:Name="ShowOnBackgroundCheck" DockPanel.Dock="Right" VerticalAlignment="Center" Margin="12,0,0,0"
-                                                  Checked="ShowOnBackground_Changed" Unchecked="ShowOnBackground_Changed"/>
+                                        <Border Classes="segmented" DockPanel.Dock="Right" VerticalAlignment="Center" Margin="12,0,0,0">
+                                            <StackPanel Orientation="Horizontal">
+                                                <RadioButton x:Name="SettingsBgNoRadio" Classes="segment" GroupName="SettingsBgGroup"
+                                                             Content="{DynamicResource Option_BackgroundNo}" Click="SettingsBgRadio_Click" Tag="no"/>
+                                                <RadioButton x:Name="SettingsBgYesRadio" Classes="segment" GroupName="SettingsBgGroup"
+                                                             Content="{DynamicResource Option_BackgroundYes}" Click="SettingsBgRadio_Click" Tag="yes"/>
+                                                <RadioButton x:Name="SettingsBgGreyedRadio" Classes="segment" GroupName="SettingsBgGroup"
+                                                             Content="{DynamicResource Option_BackgroundGreyed}" Click="SettingsBgRadio_Click" Tag="greyed"/>
+                                            </StackPanel>
+                                        </Border>
                                         <StackPanel>
-                                            <TextBlock Text="Show on scene background" Classes="settingTitle"/>
-                                            <TextBlock Text="Draw overlays and animation frames on top of their scene's background, at their real screen position. Off shows them alone on a checkerboard." Classes="settingSubtitle"/>
+                                            <TextBlock Text="{DynamicResource Settings_ShowOnBg_Title}" Classes="settingTitle"/>
+                                            <TextBlock Text="{DynamicResource Settings_ShowOnBg_Subtitle}" Classes="settingSubtitle"/>
                                         </StackPanel>
                                     </DockPanel>
                                 </Border>
@@ -215,21 +223,35 @@
 
                             <!-- Appearance -->
                             <StackPanel x:Name="AppearanceSection" IsVisible="False">
-                                <TextBlock Text="Appearance" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                                <TextBlock Text="Light or dark mode for the application chrome."
+                                <TextBlock Text="{DynamicResource Settings_Nav_Appearance}" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                <TextBlock Text="{DynamicResource Settings_Language_Subtitle}"
                                            Opacity="0.7" Margin="0,0,0,16"/>
+
+                                <Border Classes="settingCard">
+                                    <DockPanel>
+                                        <ComboBox x:Name="LanguageCombo" DockPanel.Dock="Right" VerticalAlignment="Center" Margin="12,0,0,0" MinWidth="140"
+                                                  SelectionChanged="Language_SelectionChanged">
+                                            <ComboBoxItem Content="English" Tag="en"/>
+                                            <ComboBoxItem Content="Español" Tag="es"/>
+                                        </ComboBox>
+                                        <StackPanel>
+                                            <TextBlock Text="{DynamicResource Settings_Language_Title}" Classes="settingTitle"/>
+                                            <TextBlock Text="{DynamicResource Settings_Language_Subtitle}" Classes="settingSubtitle"/>
+                                        </StackPanel>
+                                    </DockPanel>
+                                </Border>
 
                                 <Border Classes="settingCard">
                                     <DockPanel>
                                         <ComboBox x:Name="ThemeCombo" DockPanel.Dock="Right" VerticalAlignment="Center" Margin="12,0,0,0" MinWidth="140"
                                                   SelectionChanged="Theme_SelectionChanged">
-                                            <ComboBoxItem Content="Follow system" Tag="System"/>
-                                            <ComboBoxItem Content="Light"         Tag="Light"/>
-                                            <ComboBoxItem Content="Dark"          Tag="Dark"/>
+                                            <ComboBoxItem Content="{DynamicResource Settings_Theme_System}" Tag="System"/>
+                                            <ComboBoxItem Content="{DynamicResource Settings_Theme_Light}"  Tag="Light"/>
+                                            <ComboBoxItem Content="{DynamicResource Settings_Theme_Dark}"   Tag="Dark"/>
                                         </ComboBox>
                                         <StackPanel>
-                                            <TextBlock Text="Choose your mode" Classes="settingTitle"/>
-                                            <TextBlock Text="Change the colors that appear in the app." Classes="settingSubtitle"/>
+                                            <TextBlock Text="{DynamicResource Settings_Theme_Title}" Classes="settingTitle"/>
+                                            <TextBlock Text="{DynamicResource Settings_Theme_Subtitle}" Classes="settingSubtitle"/>
                                         </StackPanel>
                                     </DockPanel>
                                 </Border>

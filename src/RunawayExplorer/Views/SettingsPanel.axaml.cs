@@ -48,10 +48,15 @@ public partial class SettingsPanel : UserControl
             FpsBox.Value = (decimal)_settings.AnimationFps;
             LoopAnimationCheck.IsChecked = _settings.LoopAnimation;
             AutoPlayAnimationCheck.IsChecked = _settings.AutoPlayAnimation;
-            ShowOnBackgroundCheck.IsChecked = _settings.ShowOnBackground;
+            string bgMode = _settings.BackgroundMode.ToLowerInvariant();
+            SettingsBgNoRadio.IsChecked = bgMode == "no";
+            SettingsBgYesRadio.IsChecked = bgMode == "yes";
+            SettingsBgGreyedRadio.IsChecked = bgMode == "greyed";
             VoiceRateBox.Value = _settings.VoiceSampleRate;
             ExportFramesCheck.IsChecked = _settings.ExportAnimationFrames;
             UseScanCacheCheck.IsChecked = _settings.UseScanCache;
+
+            LanguageCombo.SelectedIndex = LocalizationManager.NormalizeLanguage(_settings.Language) == "es" ? 1 : 0;
 
             ThemeCombo.SelectedIndex = _settings.Theme switch
             {
@@ -117,12 +122,15 @@ public partial class SettingsPanel : UserControl
         _settings.Save();
     }
 
-    private void ShowOnBackground_Changed(object? sender, RoutedEventArgs e)
+    private void SettingsBgRadio_Click(object? sender, RoutedEventArgs e)
     {
         if (_initializing || _settings is null || _owner is null) return;
-        _settings.ShowOnBackground = ShowOnBackgroundCheck.IsChecked == true;
-        _settings.Save();
-        _owner.OnShowOnBackgroundChanged();
+        if (sender is RadioButton { Tag: string mode })
+        {
+            _settings.BackgroundMode = mode;
+            _settings.Save();
+            _owner.OnShowOnBackgroundChanged();
+        }
     }
 
     private void VoiceRate_ValueChanged(object? sender, NumericUpDownValueChangedEventArgs e)
@@ -159,6 +167,17 @@ public partial class SettingsPanel : UserControl
         ScanCacheText.Text = System.IO.File.Exists(path)
             ? $"Forget every cached classification and scan the open install again. Cache: {path}"
             : "No cache has been written yet.";
+    }
+
+    private void Language_SelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_initializing || _settings is null || _owner is null) return;
+        if (LanguageCombo.SelectedItem is ComboBoxItem { Tag: string lang })
+        {
+            _settings.Language = lang;
+            _settings.Save();
+            _owner.ApplyLanguage(lang);
+        }
     }
 
     private void Theme_SelectionChanged(object? sender, SelectionChangedEventArgs e)
