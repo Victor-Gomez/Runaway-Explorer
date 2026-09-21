@@ -15,8 +15,8 @@ means unknown.
 The decoders in [`src/RunawayExplorer.Core/`](../../src/RunawayExplorer.Core/)
 implement everything marked verified: `FileSystem/Archives.cs` (§2.1, 2.2,
 2.3, 2.6, 2.7), `FileSystem/VideoKeyfile.cs` (§2.8), `Formats/RasterDecoder.cs`
-(§3.1), `Formats/OverlayDecoder.cs` (§3.2), `Formats/SpriteDecoder.cs` (§3.3)
-and `Formats/WavWriter.cs` (§4). The tests under `tests/RunawayExplorer.Core.Tests/`
+(§3.1), `Formats/OverlayDecoder.cs` (§3.2), `Formats/SpriteDecoder.cs` (§3.3),
+`Formats/RleMaskDecoder.cs` (§3.4) and `Formats/WavWriter.cs` (§4). The tests under `tests/RunawayExplorer.Core.Tests/`
 build synthetic entries from these descriptions and check the decoders against
 them, and the decoders were cross-checked entry for entry against the original
 Python exporter on a full install (1,062 of 1,062 entries agree; all 40,276
@@ -28,11 +28,11 @@ sprite frames walk byte-exact).
 
 | Path | Contents | Section |
 |---|---|---|
-| `Resource/RESOURCE.<L><nn>` | One scene each: backgrounds, overlays, sprite animations, scene data | §2.1, §3 |
+| `Resource/RESOURCE.<L><nn>` | One scene each: backgrounds, scene masks, overlays, sprite animations, scene data | §2.1, §3 |
 | `Resource/RESOURCE.M<nn>` | Music, 16 kHz stereo PCM | §2.2, §4.1 |
 | `Resource/RESOURCE.S<nn>` | Ambient / SFX, 22 kHz stereo PCM | §2.2, §4.1 |
-| `Resource/RESOURCE.000` | Global data: fonts, UI atlas, localised bitmaps, misc tables | §2.3, §3.4–3.6 |
-| `Resource/Resource.001` | Character sprite library (different codec) | §2.4, §3.4 |
+| `Resource/RESOURCE.000` | Global data: fonts, UI atlas, localised bitmaps, misc tables | §2.3, §3.5–3.7 |
+| `Resource/Resource.001` | Character sprite library (different codec) | §2.4, §3.5 |
 | `Resource/RESOURCE.002` | Cinematic audio, 22 kHz stereo PCM | §2.2, §4.1 |
 | `Resource/RESOURCE.003` | Per-scene phrase / dialogue lookup tables | §2.5 |
 | `Resource/RESOURCE.004` | Lip-sync viseme tracks | §2.6 |
@@ -118,16 +118,16 @@ contents (offsets are absolute):
 
 | offset | contents | section |
 |---|---|---|
-| `0x3d7cf4c` | regular font atlas, ~184 glyphs, 49 KB | §3.5 |
-| `0x56bd07c` | bold font atlas, ~182 glyphs, 39 KB | §3.5 |
-| `0x3d898f4` | UI sprite atlas, 700 px wide RGB565 | §3.6 |
-| `0x3d7fa41` … | ~46 MB language-varying region: pre-rendered localised bitmaps in the font RLE format | §3.5 |
+| `0x3d7cf4c` | regular font atlas, ~184 glyphs, 49 KB | §3.6 |
+| `0x56bd07c` | bold font atlas, ~182 glyphs, 39 KB | §3.6 |
+| `0x3d898f4` | UI sprite atlas, 700 px wide RGB565 | §3.7 |
+| `0x3d7fa41` … | ~46 MB language-varying region: pre-rendered localised bitmaps in the font RLE format | §3.6 |
 
 ### 2.4 `Resource.001` (**from notes**)
 
 108 MB character-sprite library. Two 864-byte tables are loaded at
 startup (RVA 0x0e060 reads `0x360` bytes twice). Entry data uses the
-8-bit sprite codec of §3.4. Offsets cluster in 16 MB banks. Asset 402 is
+8-bit sprite codec of §3.5. Offsets cluster in 16 MB banks. Asset 402 is
 a 2,148-frame walk cycle for the player character.
 
 ### 2.5 `RESOURCE.003` — phrase tables (**from notes, partial**)
@@ -184,8 +184,8 @@ red in the top 5 bits. To 8-bit: `r = (p >> 11) << 3`,
 `g = ((p >> 5) & 63) << 2`, `b = (p & 31) << 3`. The game converts to
 RGB555 for display; the files are 565.
 
-The screen is **1024 × 600**. Scrolling scenes are wider (up to 1740)
-and always 600 tall.
+The screen is **1024 × 600**. Scrolling scenes are wider (up to 2592, e.g. `RESOURCE.H40` at 2592×600)
+and tall/extended scenes can be up to 2062 high (e.g. `RESOURCE.I03` outro credits at 1024×2062).
 
 ### 3.1 Raw raster (**verified**)
 
@@ -194,13 +194,14 @@ No header. Exactly `W × H × 2` bytes of RGB565, row-major, top to bottom.
 Width is **not stored**. Recover it as the stride at which vertically
 adjacent pixels agree — `score(W) = mean |g[i] − g[i+W]|` over the green
 channel has a razor-sharp minimum at the true width — then require that
-`W` divides the pixel count exactly. Any multiple of `1024 × 600` pixels
-is a stack of full screens and needs no detection.
+`W` divides the pixel count exactly. Rasters whose pixel count is a multiple
+of `1024 × 600` may be double-width scenes (such as `RESOURCE.I01` at 2048×900)
+or stacked full screens (used as a fallback for flat title cards that defeat
+stride detection).
 
-Counts in the scene archives: 96 rasters. 43 are 1024×600 (entry 0 of
-each scene, plus alternate states such as an opened door or a close-up
-inset); 15 are wide scrollers at 1372–1740 × 600; two are 1444×800; the
-rest are small (282×188, 204×120 — inventory / thumbnail sized).
+Counts in the scene archives include standard 1024×600 screens, wide scrollers
+up to 2592×600, double-width landscapes (2048×900), tall scrollable scenes
+(1024×2062), medium insets (1444×800), and small thumbnails (282×188, 204×120).
 
 A raster whose colour channels are decorrelated (neighbouring pixels in
 unrelated colours) is an **index layer** rather than artwork — the
@@ -300,14 +301,37 @@ inside the record's bounding box. Zero exceptions.
 
 **Timing is not stored.** Neither the records nor the segments carry a
 delay; the engine's own frame rate is not known. The exporter's animated
-PNGs default to 12 fps.
+PNGs default to 15 fps.
 
 **Reassembling an animation.** The union of the records' `(x0, w, y0, y1)`
 boxes is the natural canvas. Place frame pixels at `(x − X0, y − Y0)`
 where `(X0, Y0)` is the union's origin. The exporter's APNGs do exactly
 this using the format's per-frame offsets.
 
-### 3.4 `Resource.000` / `.001` sprite codec (**shapes verified, colour open**)
+### 3.4 Scene RLE Mask — hotspots, walk-behind & depth planes (**verified**)
+
+No header. Flat stream of 3-byte run-length encoded records:
+
+```
+N × {
+    u8 id                          zone / hotspot / depth plane identifier (1–255)
+    u16 length                     run length in pixels (little-endian)
+}
+```
+
+Runs are strictly scanline-bounded: their accumulated lengths sum to exactly the
+scene width (1024) per row without remainder or overshoot.
+
+Present as entry 1 in at least 18 scene archives (e.g. `RESOURCE.H38\e01`,
+`RESOURCE.B08\e01`, `RESOURCE.F13\e01`, `RESOURCE.F22\e01`). Each defines a
+1024×600 segmentation map where distinct IDs demarcate walkboxes, obstacles,
+depth layers (walk-behind planes), and clickable hotspots. Decoded to BGRA
+using a deterministic high-contrast palette. In the viewer, a mask can be
+displayed standalone or composited as a semi-transparent overlay (55% opacity)
+over the scene's background (`e00`, in either full color or greyscale) to inspect
+how zones align with the background art.
+
+### 3.5 `Resource.000` / `.001` sprite codec (**shapes verified, colour open**)
 
 A different codec, not related to §3.3. No record table; pictures are
 packed back to back and a new picture is detected by `y` jumping
@@ -325,7 +349,7 @@ Greyscale (byte as intensity) is the honest rendering. `palette.bin` in
 the game folder is a 256×4 BGRx dump that does not make these images
 correct.
 
-### 3.5 Font atlas — RLE antialiased (**verified**)
+### 3.6 Font atlas — RLE antialiased (**verified**)
 
 Two atlases at the `RESOURCE.000` offsets in §2.3; the ~46 MB localised
 region uses the same encoding for pre-rendered strings.
@@ -340,7 +364,7 @@ Glyphs are separated by a run of about 8 all-transparent rows (3 for
 strings). No glyph table has been found; the atlas is segmented by that
 gap. 184 regular and 182 bold glyphs extract cleanly.
 
-### 3.6 UI atlas (**from notes**)
+### 3.7 UI atlas (**from notes**)
 
 At `RESOURCE.000 + 0x3d898f4`: a ~2472-byte index followed by packed
 RGB565 sprites at width 700 — inventory, settings and arrow icons, menu
