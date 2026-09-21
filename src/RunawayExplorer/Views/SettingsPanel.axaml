@@ -176,16 +176,6 @@
                                            Opacity="0.7" Margin="0,0,0,16"/>
 
                                 <Border Classes="settingCard">
-                                    <DockPanel>
-                                        <CheckBox x:Name="ExportFramesCheck" DockPanel.Dock="Right" VerticalAlignment="Center" Margin="12,0,0,0"
-                                                  Checked="ExportFrames_Changed" Unchecked="ExportFrames_Changed"/>
-                                        <StackPanel>
-                                            <TextBlock Text="Also export animation frames" Classes="settingTitle"/>
-                                            <TextBlock Text="Next to each animated PNG, write a folder with one cropped PNG per frame, named with the frame's screen position (frame_0030_x394_y101.png)." Classes="settingSubtitle"/>
-                                        </StackPanel>
-                                    </DockPanel>
-                                </Border>
-                                <Border Classes="settingCard">
                                     <StackPanel>
                                         <TextBlock Text="Naming" Classes="settingTitle"/>
                                         <TextBlock Classes="settingSubtitle"

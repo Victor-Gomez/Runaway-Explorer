@@ -174,7 +174,7 @@ public class BatchExporterTests
         using var install = new FakeInstall();
         VirtualFileSystem vfs = VirtualFileSystem.Init(install.Root);
         string outDir = Path.Combine(install.Root, "out");
-        var options = new BatchExportOptions(AnimationFps: 12, AnimationFrames: true, VoiceSampleRate: 22050);
+        var options = new BatchExportOptions(AnimationFps: 12, VoiceSampleRate: 22050, AnimationFrames: true);
 
         var seen = new List<BatchExportProgress>();
         BatchExportSummary summary = BatchExporter.ExportSubtree(vfs.Root, vfs, outDir, options, seen.Add);
@@ -205,7 +205,7 @@ public class BatchExporterTests
         FsNode anim = vfs.FindNode(vfs.Root, "\\Scenes\\RESOURCE.H09\\e03")!;
         string outDir = Path.Combine(install.Root, "out");
 
-        BatchExporter.ExportSubtree(anim, vfs, outDir, new BatchExportOptions(24, AnimationFrames: false, 22050));
+        BatchExporter.ExportSubtree(anim, vfs, outDir, new BatchExportOptions(24, 22050, AnimationFrames: false));
 
         Assert.True(File.Exists(Path.Combine(outDir, "e03.png")));
         Assert.False(Directory.Exists(Path.Combine(outDir, "e03_frames")));
@@ -226,7 +226,7 @@ public class BatchExporterTests
         cts.Cancel();
 
         Assert.Throws<OperationCanceledException>(() => BatchExporter.ExportSubtree(
-            vfs.Root, vfs, Path.Combine(install.Root, "out"), new BatchExportOptions(12, false, 22050), cancellationToken: cts.Token));
+            vfs.Root, vfs, Path.Combine(install.Root, "out"), new BatchExportOptions(12, 22050), cancellationToken: cts.Token));
     }
 
     [Theory]

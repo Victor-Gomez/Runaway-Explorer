@@ -15,9 +15,9 @@ public sealed record BatchExportSummary(int ExportedCount, int SkippedCount, int
 
 /// <summary>What the batch walk writes for each kind of entry.</summary>
 /// <param name="AnimationFps">Frame rate stamped into the APNGs. The files store none.</param>
-/// <param name="AnimationFrames">Also write one PNG per frame, in a folder next to the APNG.</param>
 /// <param name="VoiceSampleRate">Sample rate assumed for voice lines.</param>
-public sealed record BatchExportOptions(double AnimationFps, bool AnimationFrames, int VoiceSampleRate);
+/// <param name="AnimationFrames">Also write one PNG per frame, in a folder next to the APNG.</param>
+public sealed record BatchExportOptions(double AnimationFps, int VoiceSampleRate, bool AnimationFrames = false);
 
 /// <summary>
 /// Walks a subtree of the virtual file system and writes every entry it knows how to convert,
@@ -189,7 +189,7 @@ public static class BatchExporter
     /// cropped PNG named with its screen position in <c>&lt;stem&gt;_frames/</c> next to it. Empty frames
     /// get no file; the APNG keeps a 1×1 placeholder so numbering stays 1:1.
     /// </summary>
-    public static (int Frames, int FramesWritten) ExportAnimation(SpriteAsset asset, string apngPath, double fps, bool frames)
+    public static (int Frames, int FramesWritten) ExportAnimation(SpriteAsset asset, string apngPath, double fps, bool frames = false)
     {
         ArgumentNullException.ThrowIfNull(asset);
         ApngWriter.Write(asset, apngPath, fps);

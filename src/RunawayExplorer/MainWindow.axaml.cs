@@ -713,14 +713,11 @@ public partial class MainWindow : Window
                 return;
 
             double fps = _settings.AnimationFps;
-            bool frames = _settings.ExportAnimationFrames;
             try
             {
-                (int total, int written) = await Task.Run(() => BatchExporter.ExportAnimation(asset, path, fps, frames));
+                (int total, _) = await Task.Run(() => BatchExporter.ExportAnimation(asset, path, fps));
                 RememberExportFolder(path);
-                SetStatus(frames
-                    ? $"Exported {path} ({total} frames at {fps:0.#} fps) and {written} frame PNG(s) next to it."
-                    : $"Exported {path} ({total} frames at {fps:0.#} fps).");
+                SetStatus($"Exported {path} ({total} frames at {fps:0.#} fps).");
             }
             catch (Exception ex)
             {
@@ -863,7 +860,7 @@ public partial class MainWindow : Window
         SetStatus($"Exporting {sourceRoot.GetPath()} to {outputDir}...");
 
         VirtualFileSystem vfs = _vfs;
-        var options = new BatchExportOptions(_settings.AnimationFps, _settings.ExportAnimationFrames, _settings.VoiceSampleRate);
+        var options = new BatchExportOptions(_settings.AnimationFps, _settings.VoiceSampleRate);
 
         _batchExportCts?.Cancel();
         _batchExportCts = new CancellationTokenSource();

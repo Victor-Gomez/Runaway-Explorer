@@ -53,7 +53,6 @@ public partial class SettingsPanel : UserControl
             SettingsBgYesRadio.IsChecked = bgMode == "yes";
             SettingsBgGreyedRadio.IsChecked = bgMode == "greyed";
             VoiceRateBox.Value = _settings.VoiceSampleRate;
-            ExportFramesCheck.IsChecked = _settings.ExportAnimationFrames;
             UseScanCacheCheck.IsChecked = _settings.UseScanCache;
 
             LanguageCombo.SelectedIndex = LocalizationManager.NormalizeLanguage(_settings.Language) == "es" ? 1 : 0;
@@ -137,13 +136,6 @@ public partial class SettingsPanel : UserControl
     {
         if (_initializing || _settings is null || VoiceRateBox.Value is not { } value) return;
         _settings.VoiceSampleRate = (int)Math.Clamp(value, 8000, 48000);
-        _settings.Save();
-    }
-
-    private void ExportFrames_Changed(object? sender, RoutedEventArgs e)
-    {
-        if (_initializing || _settings is null) return;
-        _settings.ExportAnimationFrames = ExportFramesCheck.IsChecked == true;
         _settings.Save();
     }
 

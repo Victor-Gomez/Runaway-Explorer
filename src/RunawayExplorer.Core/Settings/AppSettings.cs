@@ -47,9 +47,6 @@ public sealed class AppSettings
         set => BackgroundMode = value ? (string.Equals(BackgroundMode, "no", StringComparison.OrdinalIgnoreCase) ? "yes" : BackgroundMode) : "no";
     }
 
-    /// <summary>When exporting an animation, also write one PNG per frame next to the APNG.</summary>
-    public bool ExportAnimationFrames { get; set; } = true;
-
     /// <summary>Sample rate assumed for the voice lines, which carry none of their own. 16,000 Hz sounds right.</summary>
     public int VoiceSampleRate { get; set; } = 16_000;
 
