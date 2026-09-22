@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using RunawayExplorer.Core.Formats;
 using RunawayExplorer.Core.Metadata;
 
@@ -44,16 +45,20 @@ public sealed class VirtualFileSystem
     private readonly Dictionary<string, byte[]?> _attributeTableCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _attributeTableGate = new();
 
-    public VirtualFileSystem(string baseDir, FsNode root, VideoKeyfile? keyfile = null)
+    public VirtualFileSystem(string baseDir, FsNode root, VideoKeyfile? keyfile = null, GameVersion gameVersion = GameVersion.Runaway1)
     {
         BaseDir = baseDir;
         Root = root;
         Keyfile = keyfile;
+        GameVersion = gameVersion;
     }
 
     public string BaseDir { get; }
 
     public FsNode Root { get; }
+
+    /// <summary>The detected or configured game release.</summary>
+    public GameVersion GameVersion { get; }
 
     /// <summary>Active metadata and display language (e.g. "en", "es").</summary>
     public string Language { get; private set; } = SceneCatalog.DefaultLanguage;
@@ -103,8 +108,9 @@ public sealed class VirtualFileSystem
 
         string? resourceDir = FindDir(baseDir, "Resource");
         if (resourceDir is null)
-            throw new DirectoryNotFoundException($"No 'Resource' folder under {baseDir}. Pick the game's install folder (the one containing Runaway.exe).");
+            throw new DirectoryNotFoundException($"No 'Resource' folder under {baseDir}. Pick the game's install folder (the one containing Runaway.exe or RunawayTDOTT.exe).");
 
+        GameVersion gameVersion = GameDetector.Detect(baseDir);
         cache ??= ScanCache.Ephemeral();
         string activeLanguage = language ?? SceneCatalog.DefaultLanguage;
 
@@ -125,7 +131,7 @@ public sealed class VirtualFileSystem
             }
         }
 
-        var vfs = new VirtualFileSystem(baseDir, root, keyfile)
+        var vfs = new VirtualFileSystem(baseDir, root, keyfile, gameVersion)
         {
             Language = activeLanguage
         };
@@ -165,7 +171,7 @@ public sealed class VirtualFileSystem
         {
             string path = sceneArchives[i];
             progress?.Invoke($"Scanning {Path.GetFileName(path)}  ({Interlocked.Increment(ref done)}/{sceneArchives.Count})");
-            (FsNode node, bool fromCache) = BuildSceneArchive(path, cache, activeLanguage, cancellationToken);
+            (FsNode node, bool fromCache) = BuildSceneArchive(path, cache, activeLanguage, gameVersion, cancellationToken);
             sceneNodes[i] = node;
             if (fromCache)
                 anyFromCache = true;
@@ -204,17 +210,17 @@ public sealed class VirtualFileSystem
             if (upper.StartsWith("RESOURCE.M", StringComparison.Ordinal))
             {
                 progress?.Invoke($"Reading {name}");
-                summary.AudioClips += Attach(music, BuildAudioArchive(path, EntryKind.Music, MusicPcm, dedupe: false, activeLanguage)).Children.Count;
+                summary.AudioClips += Attach(music, BuildAudioArchive(path, EntryKind.Music, MusicPcm, dedupe: false, activeLanguage, gameVersion)).Children.Count;
             }
             else if (upper.StartsWith("RESOURCE.S", StringComparison.Ordinal))
             {
                 progress?.Invoke($"Reading {name}");
-                summary.AudioClips += Attach(ambient, BuildAudioArchive(path, EntryKind.Ambient, AmbientPcm, dedupe: false, activeLanguage)).Children.Count;
+                summary.AudioClips += Attach(ambient, BuildAudioArchive(path, EntryKind.Ambient, AmbientPcm, dedupe: false, activeLanguage, gameVersion)).Children.Count;
             }
             else if (upper == "RESOURCE.002")
             {
                 progress?.Invoke($"Reading {name}");
-                summary.AudioClips += Attach(cinematic, BuildAudioArchive(path, EntryKind.Cinematic, CinematicPcm, dedupe: true, activeLanguage)).Children.Count;
+                summary.AudioClips += Attach(cinematic, BuildAudioArchive(path, EntryKind.Cinematic, CinematicPcm, dedupe: true, activeLanguage, gameVersion)).Children.Count;
             }
             else if (upper == "RESOURCE.004")
             {
@@ -235,7 +241,7 @@ public sealed class VirtualFileSystem
         if (dataaDir is not null)
         {
             progress?.Invoke("Reading voice shards");
-            summary.VoiceClips = BuildVoice(voice, dataaDir);
+            summary.VoiceClips = BuildVoice(voice, dataaDir, gameVersion);
         }
 
         if (datavDir is not null)
@@ -274,9 +280,9 @@ public sealed class VirtualFileSystem
         else if (node.IsDirectory && node.Parent?.Parent == Root)
         {
             if (node.Parent.Name == ScenesFolder)
-                node.FriendlyName = SceneCatalog.GetSceneTitle(node.Name, language);
+                node.FriendlyName = SceneCatalog.GetSceneTitle(node.Name, language, GameVersion);
             else if (node.Parent.Name is MusicFolder or AmbientFolder or CinematicFolder)
-                node.FriendlyName = SceneCatalog.GetAudioTitle(node.Name, language);
+                node.FriendlyName = SceneCatalog.GetAudioTitle(node.Name, language, GameVersion);
         }
         else if (node.IsFile && node.Parent?.Parent?.Name == ScenesFolder)
         {
@@ -287,14 +293,14 @@ public sealed class VirtualFileSystem
             UpdateLanguageRecursive(child, language);
     }
 
-    private static (FsNode Node, bool FromCache) BuildSceneArchive(string path, ScanCache cache, string language, CancellationToken cancellationToken)
+    private static (FsNode Node, bool FromCache) BuildSceneArchive(string path, ScanCache cache, string language, GameVersion gameVersion, CancellationToken cancellationToken)
     {
         var node = new FsNode
         {
             NodeType = FsNodeType.Directory,
             Kind = EntryKind.Folder,
             Name = Path.GetFileName(path),
-            FriendlyName = SceneCatalog.GetSceneTitle(Path.GetFileName(path), language),
+            FriendlyName = SceneCatalog.GetSceneTitle(Path.GetFileName(path), language, gameVersion),
             ArchivePath = path,
             Size = new FileInfo(path).Length,
         };
@@ -305,23 +311,78 @@ public sealed class VirtualFileSystem
         {
             cached = [];
             using FileStream f = File.OpenRead(path);
-            foreach (ArchiveEntry entry in SceneArchive.ReadEntries(f))
+            List<ArchiveEntry> rawEntries = SceneArchive.ReadEntries(f);
+            var pairedWithPrev = new HashSet<int>();
+
+            for (int i = 0; i < rawEntries.Count; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var buffer = new byte[entry.Size];
-                f.Position = entry.Offset;
-                f.ReadExactly(buffer);
-                EntryClassification c;
-                try
+                ArchiveEntry entry = rawEntries[i];
+
+                if (pairedWithPrev.Contains(i))
                 {
-                    c = EntryClassifier.Classify(buffer);
+                    cached.Add(ScanCache.CachedEntry.From(entry, EntryClassification.DataEntry));
+                    continue;
                 }
-                catch (Exception)
+
+                bool isR2SpritePair = false;
+                if (gameVersion == GameVersion.Runaway2 && i + 1 < rawEntries.Count && entry.Size >= 16)
                 {
-                    // A malformed entry must not take the whole archive down; it is simply "data".
-                    c = EntryClassification.DataEntry;
+                    ArchiveEntry nextEntry = rawEntries[i + 1];
+                    if (entry.Offset + entry.Size == nextEntry.Offset)
+                    {
+                        Span<byte> head = stackalloc byte[16];
+                        f.Position = entry.Offset;
+                        if (f.Read(head) == 16)
+                        {
+                            ushort fc = BinaryPrimitives.ReadUInt16LittleEndian(head);
+                            uint fo0 = BinaryPrimitives.ReadUInt32LittleEndian(head.Slice(2));
+                            if (fc > 0 && fc <= 2000 && fo0 == 0 && entry.Size == 2 + fc * 14)
+                            {
+                                long totalSize = entry.Size + nextEntry.Size;
+                                if (totalSize <= 50_000_000)
+                                {
+                                    var combined = new byte[totalSize];
+                                    f.Position = entry.Offset;
+                                    f.ReadExactly(combined);
+                                    if (SpriteAsset.Parse(combined) is { } sprite)
+                                    {
+                                        isR2SpritePair = true;
+                                        pairedWithPrev.Add(i + 1);
+                                        var combinedEntry = new ArchiveEntry(entry.Index, entry.Offset, totalSize);
+                                        var classification = new EntryClassification(EntryKind.Animation, new ImageInfo
+                                        {
+                                            X = sprite.Bounds.X,
+                                            Y = sprite.Bounds.Y,
+                                            Width = sprite.Bounds.Width,
+                                            Height = sprite.Bounds.Height,
+                                            Frames = sprite.FrameCount,
+                                        });
+                                        cached.Add(ScanCache.CachedEntry.From(combinedEntry, classification));
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
-                cached.Add(ScanCache.CachedEntry.From(entry, c));
+
+                if (!isR2SpritePair)
+                {
+                    var buffer = new byte[entry.Size];
+                    f.Position = entry.Offset;
+                    f.ReadExactly(buffer);
+                    EntryClassification c;
+                    try
+                    {
+                        c = EntryClassifier.Classify(buffer);
+                    }
+                    catch (Exception)
+                    {
+                        // A malformed entry must not take the whole archive down; it is simply "data".
+                        c = EntryClassification.DataEntry;
+                    }
+                    cached.Add(ScanCache.CachedEntry.From(entry, c));
+                }
             }
             cache.Put(path, cached);
         }
@@ -350,26 +411,41 @@ public sealed class VirtualFileSystem
     public static string SceneEntryLabel(FsNode entry) =>
         SceneCatalog.FormatSceneEntryLabel(entry, null);
 
-    private static FsNode BuildAudioArchive(string path, EntryKind kind, AudioInfo pcm, bool dedupe, string language)
+    private static FsNode BuildAudioArchive(string path, EntryKind kind, AudioInfo pcm, bool dedupe, string language, GameVersion gameVersion)
     {
         var node = new FsNode
         {
             NodeType = FsNodeType.Directory,
             Name = Path.GetFileName(path),
-            FriendlyName = SceneCatalog.GetAudioTitle(Path.GetFileName(path), language),
+            FriendlyName = SceneCatalog.GetAudioTitle(Path.GetFileName(path), language, gameVersion),
             ArchivePath = path,
             Size = new FileInfo(path).Length,
         };
 
-        List<ArchiveEntry> entries;
+        List<AudioArchiveEntry> entries;
         using (FileStream f = File.OpenRead(path))
-            entries = AudioArchive.ReadEntries(f);
+            entries = AudioArchive.ReadAudioEntries(f);
 
         var seen = new HashSet<long>();
-        foreach (ArchiveEntry e in entries)
+        foreach (AudioArchiveEntry e in entries)
         {
             if (dedupe && !seen.Add(e.Offset))
                 continue;
+
+            AudioInfo audioInfo;
+            if (e.Format == AudioFormat.Mp3)
+            {
+                audioInfo = new AudioInfo { Format = AudioFormat.Mp3, SampleRate = 44_100, Channels = 2, BitsPerSample = 16 };
+            }
+            else if (e.Format == AudioFormat.Wav)
+            {
+                audioInfo = new AudioInfo { Format = AudioFormat.Wav, SampleRate = 44_100, Channels = 2, BitsPerSample = 16 };
+            }
+            else
+            {
+                audioInfo = pcm;
+            }
+
             var child = new FsNode
             {
                 NodeType = FsNodeType.File | FsNodeType.InArchive,
@@ -379,9 +455,9 @@ public sealed class VirtualFileSystem
                 Size = e.Size,
                 EntryIndex = e.Index,
                 ArchivePath = path,
-                Audio = pcm,
+                Audio = audioInfo,
             };
-            child.FriendlyName = $"{child.Name}  {FormatDuration(pcm.DurationSeconds(e.Size))}";
+            child.FriendlyName = $"{child.Name}  {FormatDuration(audioInfo.DurationSeconds(e.Size))}";
             Attach(node, child);
         }
         return node;
@@ -463,8 +539,51 @@ public sealed class VirtualFileSystem
         };
     }
 
-    private static int BuildVoice(FsNode voice, string dataaDir)
+    private static int BuildVoice(FsNode voice, string dataaDir, GameVersion gameVersion)
     {
+        if (gameVersion == GameVersion.Runaway2)
+        {
+            string? dataaa = Directory.EnumerateFiles(dataaDir)
+                .FirstOrDefault(f => Path.GetFileName(f).Equals("Dataaa.000", StringComparison.OrdinalIgnoreCase));
+            if (dataaa is null)
+                return 0;
+
+            SortedDictionary<int, VoiceArchive.VoiceClip> clips = VoiceArchive.ReadSingleArchiveClips(dataaa);
+            var groups = new Dictionary<int, FsNode>();
+            var voiceMp3 = new AudioInfo { Format = AudioFormat.Mp3, SampleRate = 44_100, Channels = 1, BitsPerSample = 16 };
+
+            foreach (VoiceArchive.VoiceClip clip in clips.Values)
+            {
+                int g = clip.Index / VoiceGroupSize;
+                if (!groups.TryGetValue(g, out FsNode? group))
+                {
+                    int lo = g * VoiceGroupSize;
+                    group = new FsNode
+                    {
+                        NodeType = FsNodeType.Directory,
+                        Name = $"{lo:00000}-{lo + VoiceGroupSize - 1:00000}",
+                    };
+                    groups[g] = group;
+                    Attach(voice, group);
+                }
+
+                var node = new FsNode
+                {
+                    NodeType = FsNodeType.File | FsNodeType.InArchive,
+                    Kind = EntryKind.Voice,
+                    Name = $"VOICE_{clip.Index:00000}",
+                    Offset = clip.Offset,
+                    Size = clip.Size,
+                    EntryIndex = clip.Index,
+                    ArchivePath = clip.ShardPath,
+                    Audio = voiceMp3,
+                };
+                node.FriendlyName = $"{node.Name}  {FormatDuration(voiceMp3.DurationSeconds(clip.Size))}";
+                Attach(group, node);
+            }
+            return clips.Count;
+        }
+
         var shards = new List<string>();
         foreach (string wanted in VoiceArchive.ShardNames())
         {
@@ -476,12 +595,12 @@ public sealed class VirtualFileSystem
         if (shards.Count == 0)
             return 0;
 
-        SortedDictionary<int, VoiceArchive.VoiceClip> clips = VoiceArchive.ReadClips(shards);
-        var groups = new Dictionary<int, FsNode>();
-        foreach (VoiceArchive.VoiceClip clip in clips.Values)
+        SortedDictionary<int, VoiceArchive.VoiceClip> r1Clips = VoiceArchive.ReadClips(shards);
+        var r1Groups = new Dictionary<int, FsNode>();
+        foreach (VoiceArchive.VoiceClip clip in r1Clips.Values)
         {
             int g = clip.Index / VoiceGroupSize;
-            if (!groups.TryGetValue(g, out FsNode? group))
+            if (!r1Groups.TryGetValue(g, out FsNode? group))
             {
                 int lo = g * VoiceGroupSize;
                 group = new FsNode
@@ -489,7 +608,7 @@ public sealed class VirtualFileSystem
                     NodeType = FsNodeType.Directory,
                     Name = $"{lo:00000}-{lo + VoiceGroupSize - 1:00000}",
                 };
-                groups[g] = group;
+                r1Groups[g] = group;
                 Attach(voice, group);
             }
 
@@ -507,7 +626,7 @@ public sealed class VirtualFileSystem
             node.FriendlyName = $"{node.Name}  {FormatDuration(VoicePcm.DurationSeconds(clip.Size))}";
             Attach(group, node);
         }
-        return clips.Count;
+        return r1Clips.Count;
     }
 
     private static int BuildVideos(FsNode video, string datavDir, VideoKeyfile? keyfile)

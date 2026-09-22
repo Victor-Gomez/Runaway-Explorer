@@ -78,11 +78,22 @@
 
     <!-- Settings Panel -->
     <x:String x:Key="Settings_Title">Configuración</x:String>
+    <x:String x:Key="Settings_Nav_Games">Juegos</x:String>
     <x:String x:Key="Settings_Nav_Playback">Reproducción</x:String>
     <x:String x:Key="Settings_Nav_Export">Exportación</x:String>
     <x:String x:Key="Settings_Nav_Scanning">Escaneo</x:String>
     <x:String x:Key="Settings_Nav_Appearance">Apariencia</x:String>
     <x:String x:Key="Settings_Nav_Updates">Actualizaciones</x:String>
+
+    <x:String x:Key="Settings_Games_Title">Juegos</x:String>
+    <x:String x:Key="Settings_Games_Subtitle">Carpetas de instalación de los juegos Runaway.</x:String>
+    <x:String x:Key="Settings_Game_R1_Title">Carpeta de instalación de Runaway: A Road Adventure</x:String>
+    <x:String x:Key="Settings_Game_R1_Subtitle">Carpeta que contiene Runaway.exe y Resource/.</x:String>
+    <x:String x:Key="Settings_Game_R2_Title">Carpeta de Runaway: The Dream of the Turtle</x:String>
+    <x:String x:Key="Settings_Game_R2_Subtitle">Carpeta que contiene RunawayTDOTT.exe y Resource/.</x:String>
+    <x:String x:Key="Settings_Game_NotConfigured">No configurada</x:String>
+    <x:String x:Key="Settings_Game_Browse">Examinar...</x:String>
+    <x:String x:Key="Settings_Game_Clear">Borrar</x:String>
 
     <x:String x:Key="Settings_Language_Title">Idioma</x:String>
     <x:String x:Key="Settings_Language_Subtitle">Selecciona el idioma de la aplicación y de los metadatos.</x:String>

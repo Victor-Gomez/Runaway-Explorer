@@ -5,6 +5,9 @@ namespace RunawayExplorer.Core.FileSystem;
 /// <summary>One populated slot of an archive table.</summary>
 public readonly record struct ArchiveEntry(int Index, long Offset, long Size);
 
+/// <summary>One populated slot of an audio archive table, including format information.</summary>
+public readonly record struct AudioArchiveEntry(int Index, long Offset, long Size, AudioFormat Format);
+
 /// <summary>
 /// <c>RESOURCE.&lt;L&gt;&lt;nn&gt;</c> -- one scene each.
 /// <code>
@@ -30,11 +33,32 @@ public static class SceneArchive
         if (data.Length < 8)
             return entries;
 
-        uint tbl = BinaryPrimitives.ReadUInt32LittleEndian(data);
-        if (tbl == 0 || tbl % 8 != 0 || tbl > data.Length)
+        uint word0 = BinaryPrimitives.ReadUInt32LittleEndian(data);
+        uint word1 = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(4));
+
+        // Runaway 2 table: word0 is table_half_bytes (count * 4), and word1 is entry 0 offset (4 + table_half_bytes * 2)
+        if (word0 > 0 && word0 % 4 == 0 && word1 == 4 + word0 * 2)
+        {
+            int count = (int)(word0 / 4);
+            int tableEnd = (int)(4 + word0 * 2);
+            if (tableEnd > data.Length)
+                return entries;
+
+            for (int i = 0; i < count; i++)
+            {
+                uint o = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(4 + i * 4));
+                uint s = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(4 + (int)word0 + i * 4));
+                if (o != 0 && s != 0 && (long)o + s <= fileLength)
+                    entries.Add(new ArchiveEntry(i, o, s));
+            }
+            return entries;
+        }
+
+        // Runaway 1 table: word0 is table_len (count * 8), and offsets start at 0
+        if (word0 == 0 || word0 % 8 != 0 || word0 > data.Length)
             return entries;
 
-        int half = (int)(tbl / 8);
+        int half = (int)(word0 / 8);
         for (int i = 0; i < half; i++)
         {
             uint o = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(i * 4));
@@ -50,42 +74,86 @@ public static class SceneArchive
     {
         ArgumentNullException.ThrowIfNull(archive);
         archive.Position = 0;
-        Span<byte> first = stackalloc byte[4];
-        if (archive.Read(first) < 4)
+        Span<byte> first = stackalloc byte[8];
+        if (archive.Read(first) < 8)
             return [];
-        uint tbl = BinaryPrimitives.ReadUInt32LittleEndian(first);
-        if (tbl == 0 || tbl % 8 != 0 || tbl > archive.Length || tbl > 1 << 20)
+        uint word0 = BinaryPrimitives.ReadUInt32LittleEndian(first);
+        uint word1 = BinaryPrimitives.ReadUInt32LittleEndian(first.Slice(4));
+
+        uint tableLen;
+        if (word0 > 0 && word0 % 4 == 0 && word1 == 4 + word0 * 2)
+        {
+            tableLen = 4 + word0 * 2;
+        }
+        else
+        {
+            tableLen = word0;
+        }
+
+        if (tableLen == 0 || tableLen > archive.Length || tableLen > 1 << 20)
             return [];
-        var table = new byte[tbl];
+        var table = new byte[tableLen];
         archive.Position = 0;
         archive.ReadExactly(table);
         return ReadEntries(table, archive.Length);
     }
 
-    /// <summary>True for <c>RESOURCE.A00</c>-style names: a letter and two digits after the dot.</summary>
+    /// <summary>True for scene archive names in Runaway 1 (e.g. RESOURCE.A00) and Runaway 2 (e.g. RESOURCE.B04A, RESOURCE.SP1).</summary>
     public static bool IsSceneArchiveName(string fileName)
     {
+        if (!Path.GetFileNameWithoutExtension(fileName).Equals("RESOURCE", StringComparison.OrdinalIgnoreCase))
+            return false;
+
         string ext = Path.GetExtension(fileName);
-        return Path.GetFileNameWithoutExtension(fileName).Equals("RESOURCE", StringComparison.OrdinalIgnoreCase)
-               && ext.Length == 4
-               && char.IsLetter(ext[1]) && char.ToUpperInvariant(ext[1]) is not ('M' or 'S')
-               && char.IsDigit(ext[2]) && char.IsDigit(ext[3]);
+        if (ext.Length < 4 || ext.Length > 5)
+            return false;
+
+        string code = ext[1..].ToUpperInvariant();
+        // Audio archives start with M or S (followed by digits)
+        if (code.StartsWith("M", StringComparison.Ordinal) && code.Length == 3 && char.IsDigit(code[1]))
+            return false;
+        if (code.StartsWith("S", StringComparison.Ordinal) && code.Length == 3 && char.IsDigit(code[1]))
+            return false;
+        // Non-scene resource files
+        if (code is "000" or "002" or "003" or "004")
+            return false;
+
+        return true;
     }
 }
 
 /// <summary>
-/// <c>RESOURCE.M&lt;nn&gt;</c>, <c>S&lt;nn&gt;</c>, <c>002</c> -- audio. A plain offset table with no size
-/// half: slot 0 is always empty, so <c>table_len</c> is the smallest non-zero word, and an entry's size
-/// is the gap to the next-highest offset. <c>002</c> has several entries aliasing the same offset.
+/// <c>RESOURCE.M&lt;nn&gt;</c>, <c>S&lt;nn&gt;</c>, <c>002</c> -- audio.
+/// In Runaway 1: plain offset table with no size half.
+/// In Runaway 2: table has <c>u32 count</c> followed by 9-byte records: <c>{ u32 offset, u32 size, u8 format }</c>.
 /// </summary>
 public static class AudioArchive
 {
-    public static List<ArchiveEntry> ReadEntries(ReadOnlySpan<byte> data, long fileLength)
+    public static List<AudioArchiveEntry> ReadAudioEntries(ReadOnlySpan<byte> data, long fileLength)
     {
-        var entries = new List<ArchiveEntry>();
+        var entries = new List<AudioArchiveEntry>();
         if (data.Length < 8)
             return entries;
 
+        // Runaway 2 audio table: word0 is count, word1 is firstOffset (4 + count * 9)
+        uint countR2 = BinaryPrimitives.ReadUInt32LittleEndian(data);
+        uint firstOffR2 = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(4));
+        if (countR2 > 0 && countR2 < 100_000 && firstOffR2 == 4 + countR2 * 9 && data.Length >= firstOffR2)
+        {
+            for (int i = 0; i < countR2; i++)
+            {
+                int p = 4 + i * 9;
+                uint o = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(p));
+                uint s = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(p + 4));
+                byte fmt = data[p + 8];
+                AudioFormat format = fmt == 0 ? AudioFormat.Wav : AudioFormat.Mp3;
+                if (o != 0 && s != 0 && (long)o + s <= fileLength)
+                    entries.Add(new AudioArchiveEntry(i, o, s, format));
+            }
+            return entries;
+        }
+
+        // Runaway 1 audio table: plain offsets
         uint first = 0;
         int scanLimit = Math.Min(data.Length, 1 << 16);
         for (int i = 0; i + 4 <= scanLimit; i += 4)
@@ -116,9 +184,27 @@ public static class AudioArchive
             long end = idx >= 0 && idx + 1 < sorted.Length ? sorted[idx + 1] : fileLength;
             long size = end - o;
             if (size > 0)
-                entries.Add(new ArchiveEntry(i, o, size));
+                entries.Add(new AudioArchiveEntry(i, o, size, AudioFormat.RawPcm));
         }
         return entries;
+    }
+
+    public static List<AudioArchiveEntry> ReadAudioEntries(Stream archive)
+    {
+        ArgumentNullException.ThrowIfNull(archive);
+        archive.Position = 0;
+        var head = new byte[(int)Math.Min(archive.Length, 1 << 16)];
+        archive.ReadExactly(head);
+        return ReadAudioEntries(head, archive.Length);
+    }
+
+    public static List<ArchiveEntry> ReadEntries(ReadOnlySpan<byte> data, long fileLength)
+    {
+        var audioEntries = ReadAudioEntries(data, fileLength);
+        var list = new List<ArchiveEntry>(audioEntries.Count);
+        foreach (AudioArchiveEntry e in audioEntries)
+            list.Add(new ArchiveEntry(e.Index, e.Offset, e.Size));
+        return list;
     }
 
     public static List<ArchiveEntry> ReadEntries(Stream archive)
@@ -133,29 +219,51 @@ public static class AudioArchive
 
 /// <summary>
 /// <c>RESOURCE.000</c> -- global data (fonts, UI atlas, localised bitmaps).
-/// <code>
-/// 0x000   byte[20]    header, starts 03 01 06 01 01 01 ...
-/// 0x014   u32[500]    offsets
-/// 0x7F4   u32[500]    sizes
-/// 0xFB4   entry data
-/// </code>
+/// Runaway 1: 20-byte header, 500 slots.
+/// Runaway 2: 24-byte header (table_half_bytes at 20 is 1248), 312 slots.
 /// </summary>
 public static class GlobalArchive
 {
-    public const int HeaderSize = 20;
-    public const int SlotCount = 500;
-    public const int TableEnd = HeaderSize + SlotCount * 8;
+    public const int HeaderSizeR1 = 20;
+    public const int SlotCountR1 = 500;
+    public const int TableEndR1 = HeaderSizeR1 + SlotCountR1 * 8;
+
+    public const int HeaderSize = HeaderSizeR1;
+    public const int SlotCount = SlotCountR1;
+    public const int TableEnd = TableEndR1;
 
     public static List<ArchiveEntry> ReadEntries(ReadOnlySpan<byte> data, long fileLength)
     {
         var entries = new List<ArchiveEntry>();
-        if (data.Length < TableEnd)
+        if (data.Length < 24)
             return entries;
 
-        for (int i = 0; i < SlotCount; i++)
+        // Check for Runaway 2 header: byte 20 is table_half_bytes (1248)
+        uint r2HalfBytes = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(20));
+        if (r2HalfBytes > 0 && r2HalfBytes % 4 == 0 && r2HalfBytes <= 8192)
         {
-            uint o = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(HeaderSize + i * 4));
-            uint s = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(HeaderSize + SlotCount * 4 + i * 4));
+            int slotCount = (int)(r2HalfBytes / 4);
+            int tableEnd = 24 + (int)r2HalfBytes * 2;
+            if (data.Length >= tableEnd)
+            {
+                for (int i = 0; i < slotCount; i++)
+                {
+                    uint o = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(24 + i * 4));
+                    uint s = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(24 + (int)r2HalfBytes + i * 4));
+                    if (o != 0 && s != 0 && (long)o + s <= fileLength)
+                        entries.Add(new ArchiveEntry(i, o, s));
+                }
+                return entries;
+            }
+        }
+
+        if (data.Length < TableEndR1)
+            return entries;
+
+        for (int i = 0; i < SlotCountR1; i++)
+        {
+            uint o = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(HeaderSizeR1 + i * 4));
+            uint s = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(HeaderSizeR1 + SlotCountR1 * 4 + i * 4));
             if (o != 0 && s != 0 && (long)o + s <= fileLength)
                 entries.Add(new ArchiveEntry(i, o, s));
         }
@@ -165,32 +273,50 @@ public static class GlobalArchive
     public static List<ArchiveEntry> ReadEntries(Stream archive)
     {
         ArgumentNullException.ThrowIfNull(archive);
-        if (archive.Length < TableEnd)
-            return [];
         archive.Position = 0;
-        var table = new byte[TableEnd];
+        var table = new byte[(int)Math.Min(archive.Length, 8192)];
         archive.ReadExactly(table);
         return ReadEntries(table, archive.Length);
     }
 }
 
 /// <summary>
-/// <c>RESOURCE.004</c> -- lip-sync viseme tracks. <c>{ u32 offset, u16 size }[6000]</c>, then data.
-/// Each entry is one byte per animation tick, values 0–5 (six mouth shapes). Entry <c>k</c> pairs with
-/// voice clip <c>k</c>.
+/// <c>RESOURCE.004</c> -- lip-sync viseme tracks.
+/// Runaway 1: <c>{ u32 offset, u16 size }[6000]</c>, 36,000 bytes.
+/// Runaway 2: <c>{ u32 offset, u16 size, u8 flag }[10500]</c>, 73,500 bytes.
 /// </summary>
 public static class VisemeArchive
 {
-    public const int SlotCount = 6000;
-    public const int TableSize = SlotCount * 6;
+    public const int SlotCountR1 = 6000;
+    public const int TableSizeR1 = SlotCountR1 * 6;
+
+    public const int SlotCount = SlotCountR1;
+    public const int TableSize = TableSizeR1;
+
+    public const int SlotCountR2 = 10500;
+    public const int TableSizeR2 = SlotCountR2 * 7;
 
     public static List<ArchiveEntry> ReadEntries(ReadOnlySpan<byte> data, long fileLength)
     {
         var entries = new List<ArchiveEntry>();
-        if (data.Length < TableSize)
+        if (data.Length < TableSizeR1)
             return entries;
 
-        for (int i = 0; i < SlotCount; i++)
+        // Check if Runaway 2: first offset is 73,500
+        uint firstOff = BinaryPrimitives.ReadUInt32LittleEndian(data);
+        if (firstOff == TableSizeR2 && data.Length >= TableSizeR2)
+        {
+            for (int i = 0; i < SlotCountR2; i++)
+            {
+                uint o = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(i * 7));
+                ushort s = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(i * 7 + 4));
+                if (o != 0 && s != 0 && (long)o + s <= fileLength)
+                    entries.Add(new ArchiveEntry(i, o, s));
+            }
+            return entries;
+        }
+
+        for (int i = 0; i < SlotCountR1; i++)
         {
             uint o = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(i * 6));
             ushort s = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(i * 6 + 4));
@@ -203,10 +329,8 @@ public static class VisemeArchive
     public static List<ArchiveEntry> ReadEntries(Stream archive)
     {
         ArgumentNullException.ThrowIfNull(archive);
-        if (archive.Length < TableSize)
-            return [];
         archive.Position = 0;
-        var table = new byte[TableSize];
+        var table = new byte[(int)Math.Min(archive.Length, TableSizeR2)];
         archive.ReadExactly(table);
         return ReadEntries(table, archive.Length);
     }
@@ -222,9 +346,9 @@ public static class VisemeArchive
 }
 
 /// <summary>
-/// <c>Dataa/DATAACA&lt;0-6&gt;.000</c> -- voice lines. Seven independent archives, each a plain offset
-/// table of 12,000 slots. A clip index may appear in more than one shard; an offset ≥ that shard's file
-/// size is a reference to another shard and is skipped. Payload is raw 8-bit unsigned mono PCM.
+/// Voice lines.
+/// In Runaway 1: seven independent archives <c>Dataa/DATAACA&lt;0-6&gt;.000</c>, plain offset tables of 12,000 slots.
+/// In Runaway 2: single archive <c>Dataa/Dataaa.000</c>, table of 10,454 9-byte records.
 /// </summary>
 public static class VoiceArchive
 {
@@ -238,6 +362,46 @@ public static class VoiceArchive
     /// <summary>The shard file names, in the order the first-hit-wins rule consults them.</summary>
     public static IEnumerable<string> ShardNames() =>
         Enumerable.Range(0, ShardCount).Select(i => $"DATAACA{i}.000");
+
+    /// <summary>Reads voice clips from a single Runaway 2 <c>Dataaa.000</c> archive stream.</summary>
+    public static SortedDictionary<int, VoiceClip> ReadSingleArchiveClips(Stream stream, string sourcePath = "")
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+        var clips = new SortedDictionary<int, VoiceClip>();
+        Span<byte> head = stackalloc byte[8];
+        stream.Position = 0;
+        if (stream.Read(head) < 8)
+            return clips;
+
+        uint count = BinaryPrimitives.ReadUInt32LittleEndian(head);
+        uint firstOff = BinaryPrimitives.ReadUInt32LittleEndian(head.Slice(4));
+        if (count == 0 || count > 100_000 || firstOff != 4 + count * 9)
+            return clips;
+
+        var table = new byte[count * 9];
+        stream.Position = 4;
+        stream.ReadExactly(table);
+
+        for (int i = 0; i < count; i++)
+        {
+            int p = i * 9;
+            uint off = BinaryPrimitives.ReadUInt32LittleEndian(table.AsSpan(p));
+            uint size = BinaryPrimitives.ReadUInt32LittleEndian(table.AsSpan(p + 4));
+            if (off > 0 && size > 0 && (long)off + size <= stream.Length)
+            {
+                clips[i] = new VoiceClip(i, sourcePath, off, size);
+            }
+        }
+        return clips;
+    }
+
+    /// <summary>Reads voice clips from a single Runaway 2 <c>Dataaa.000</c> archive file.</summary>
+    public static SortedDictionary<int, VoiceClip> ReadSingleArchiveClips(string dataaaPath)
+    {
+        ArgumentNullException.ThrowIfNull(dataaaPath);
+        using FileStream f = File.OpenRead(dataaaPath);
+        return ReadSingleArchiveClips(f, dataaaPath);
+    }
 
     /// <summary>
     /// Resolves every clip across <paramref name="shardPaths"/> (in order). The first shard that holds a
@@ -282,3 +446,4 @@ public static class VoiceArchive
         return clips;
     }
 }
+
