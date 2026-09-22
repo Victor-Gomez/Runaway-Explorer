@@ -59,6 +59,9 @@ public enum EntryKind
     /// <summary>A lip-sync viseme track from <c>RESOURCE.004</c>.</summary>
     Viseme,
 
+    /// <summary>An in-game dialogue line, subtitle, or item description from <c>RESOURCE.003</c>.</summary>
+    Dialogue,
+
     /// <summary>An entry of <c>RESOURCE.000</c> (fonts, UI atlas, localised bitmaps): shown as a hex dump.</summary>
     GlobalData,
 
@@ -152,6 +155,9 @@ public sealed class FsNode
     public ImageInfo? Image { get; set; }
 
     public AudioInfo? Audio { get; set; }
+
+    /// <summary>Dialogue transcript / subtitle line if available.</summary>
+    public string? Subtitle { get; set; }
 
     public FsNode? Parent { get; set; }
 

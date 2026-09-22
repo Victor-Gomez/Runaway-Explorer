@@ -21,7 +21,7 @@ public sealed class ScanCache
     };
 
     /// <summary>Bump when the classifier or cache schema changes so old answers are discarded.</summary>
-    public const int FormatVersion = 6;
+    public const int FormatVersion = 8;
 
     public sealed class CachedEntry
     {

@@ -406,6 +406,7 @@ public static class SceneCatalog
             [VirtualFileSystem.VoiceFolder] = ("Voice", "Voces"),
             [VirtualFileSystem.LipSyncFolder] = ("Lip-sync", "Sincronización labial"),
             [VirtualFileSystem.VideoFolder] = ("Video", "Vídeos"),
+            [VirtualFileSystem.DialogueFolder] = ("Dialogue", "Diálogos"),
             [VirtualFileSystem.GlobalFolder] = ("Global Data", "Datos globales"),
         };
 
@@ -511,8 +512,21 @@ public static class SceneCatalog
                 return $"{desc}, {img.Frames} {frameWord}, {img.Width}×{img.Height} ({entry.Name})";
             }
 
+            case EntryKind.Dialogue:
+            {
+                string desc = es ? "frase" : "phrase";
+                return string.IsNullOrEmpty(entry.Subtitle)
+                    ? $"{desc} ({entry.Name})"
+                    : $"{desc} ({entry.Name})  \"{entry.Subtitle}\"";
+            }
+
             default:
             {
+                if (entry.Size == 1536)
+                {
+                    string attrWord = es ? "tabla de atributos de escena" : "scene attribute table";
+                    return $"{attrWord} ({entry.Name})";
+                }
                 string dataWord = es ? "datos" : "data";
                 return $"{dataWord}, {VirtualFileSystem.FormatSize(entry.Size)} ({entry.Name})";
             }

@@ -296,7 +296,8 @@ public class EntryClassifierTests
     [Fact]
     public void SpriteWinsOverOverlayWinsOverRaster()
     {
-        Assert.Equal(EntryKind.Animation, EntryClassifier.Classify(Sprite([new Frame([(1, 1, [1])])])).Kind);
+        Assert.Equal(EntryKind.Animation, EntryClassifier.Classify(Sprite([new Frame([(1, 1, [1])]), new Frame([(1, 1, [2])])])).Kind);
+        Assert.Equal(EntryKind.Overlay, EntryClassifier.Classify(Sprite([new Frame([(1, 1, [1])])])).Kind);
         Assert.Equal(EntryKind.Overlay, EntryClassifier.Classify(Overlay([(1, 1, [1])])).Kind);
         Assert.Equal(EntryKind.Background, EntryClassifier.Classify(Raster(204, 120)).Kind);
         Assert.Equal(EntryKind.Data, EntryClassifier.Classify(new byte[1536]).Kind);

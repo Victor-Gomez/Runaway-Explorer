@@ -1741,6 +1741,10 @@ public partial class MainWindow : Window
         SceneOverlayLayer.Children.Clear();
         SceneOverlaysPanel.IsVisible = false;
         SceneOverlaysItemsControl.ItemsSource = null;
+
+        SceneMaskImage.Source = null;
+        SceneMaskImage.IsVisible = false;
+        ImageMaskTypeGroup.IsVisible = false;
     }
 
     private void ShowContent(ResourceContent content)
@@ -1809,6 +1813,279 @@ public partial class MainWindow : Window
         return grayscale ? _sceneBackgroundGrayscaleBitmap : _sceneBackgroundBitmap;
     }
 
+    private MaskLayers _activeMaskLayers = MaskLayers.All;
+    private bool _syncingMaskToggles;
+
+    private void SyncMaskLayerButtons()
+    {
+        _syncingMaskToggles = true;
+        try
+        {
+            MaskTypeWalkToggle.IsChecked = _activeMaskLayers.HasFlag(MaskLayers.Walk);
+            MaskTypeHotspotToggle.IsChecked = _activeMaskLayers.HasFlag(MaskLayers.Hotspot);
+            MaskTypeDepthToggle.IsChecked = _activeMaskLayers.HasFlag(MaskLayers.Depth);
+            MaskTypeMaterialToggle.IsChecked = _activeMaskLayers.HasFlag(MaskLayers.Material);
+            MaskTypeOccluderToggle.IsChecked = _activeMaskLayers.HasFlag(MaskLayers.Occluder);
+        }
+        finally
+        {
+            _syncingMaskToggles = false;
+        }
+    }
+
+    private void ReadMaskLayersFromButtons()
+    {
+        MaskLayers layers = MaskLayers.None;
+        if (MaskTypeWalkToggle.IsChecked == true) layers |= MaskLayers.Walk;
+        if (MaskTypeHotspotToggle.IsChecked == true) layers |= MaskLayers.Hotspot;
+        if (MaskTypeDepthToggle.IsChecked == true) layers |= MaskLayers.Depth;
+        if (MaskTypeMaterialToggle.IsChecked == true) layers |= MaskLayers.Material;
+        if (MaskTypeOccluderToggle.IsChecked == true) layers |= MaskLayers.Occluder;
+        _activeMaskLayers = layers;
+    }
+
+    private void MaskTypeToggle_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_syncingMaskToggles) return;
+        ReadMaskLayersFromButtons();
+        ApplyMaskLayers();
+    }
+
+    private void MaskTypeToggle_PointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is ToggleButton clicked && e.GetCurrentPoint(this).Properties.IsRightButtonPressed)
+        {
+            e.Handled = true;
+            _syncingMaskToggles = true;
+            try
+            {
+                MaskTypeWalkToggle.IsChecked = clicked == MaskTypeWalkToggle;
+                MaskTypeHotspotToggle.IsChecked = clicked == MaskTypeHotspotToggle;
+                MaskTypeDepthToggle.IsChecked = clicked == MaskTypeDepthToggle;
+                MaskTypeMaterialToggle.IsChecked = clicked == MaskTypeMaterialToggle;
+                MaskTypeOccluderToggle.IsChecked = clicked == MaskTypeOccluderToggle;
+            }
+            finally { _syncingMaskToggles = false; }
+            ReadMaskLayersFromButtons();
+            ApplyMaskLayers();
+        }
+    }
+
+    private void UpdateMaskLayerButtonsForNode(FsNode node)
+    {
+        if (_vfs is null) return;
+        byte[]? table1536 = _vfs.SceneAttributeTableFor(node);
+        if (table1536 is not null && table1536.Length >= 1536)
+        {
+            var presence = RleMaskDecoder.DetectAttributePresence(table1536);
+            MaskTypeWalkToggle.IsVisible = presence.HasWalk;
+            MaskTypeHotspotToggle.IsVisible = presence.HasHotspot;
+            MaskTypeDepthToggle.IsVisible = presence.HasDepth;
+            MaskTypeMaterialToggle.IsVisible = presence.HasMaterial;
+        }
+        else
+        {
+            MaskTypeWalkToggle.IsVisible = true;
+            MaskTypeHotspotToggle.IsVisible = false;
+            MaskTypeDepthToggle.IsVisible = false;
+            MaskTypeMaterialToggle.IsVisible = false;
+        }
+
+        FsNode archive = node.IsDirectory ? node : (node.Parent ?? node);
+        bool hasOccluders = archive.Children.Any(c => c.Kind == EntryKind.Mask && IsOccluderNode(c));
+        MaskTypeOccluderToggle.IsVisible = hasOccluders || IsOccluderNode(node);
+
+        SyncMaskLayerButtons();
+    }
+
+    private void ApplyMaskLayers()
+    {
+        if (_vfs is null) return;
+
+        if (_currentContent is ImageResource && _selectedNode is not null && _selectedNode.Kind == EntryKind.Mask)
+        {
+            byte[] data = _vfs.ReadBytes(_selectedNode);
+            byte[]? table1536 = _vfs.SceneAttributeTableFor(_selectedNode);
+            byte[]? idMap = table1536 is not null ? RleMaskDecoder.ExtractObjectMapping(table1536) : null;
+            ImageInfo? info = _selectedNode.Image;
+
+            int? sceneW = info?.Width;
+            int? sceneH = info?.Height;
+            if (sceneW is null)
+            {
+                var bg = _vfs.SceneBackgroundFor(_selectedNode);
+                if (bg is not null)
+                {
+                    sceneW = bg.Width;
+                    sceneH = bg.Height;
+                }
+            }
+
+            if (SparseMaskDecoder.Detect(data, sceneW, sceneH) is { } smInfo)
+            {
+                if (_activeMaskLayers.HasFlag(MaskLayers.Occluder))
+                {
+                    int w = sceneW ?? smInfo.Width;
+                    int h = sceneH ?? smInfo.Height;
+                    DecodedImage img = SparseMaskDecoder.Decode(data, w, h, idMap, colorSeed: _selectedNode.EntryIndex);
+                    PreviewImage.Source = BitmapConverter.ToBitmap(img);
+                    PreviewImage.IsVisible = true;
+                }
+                else
+                {
+                    PreviewImage.Source = null;
+                    PreviewImage.IsVisible = false;
+                }
+                return;
+            }
+
+            if (SpanMaskDecoder.IsSpanMask(data))
+            {
+                if (_activeMaskLayers.HasFlag(MaskLayers.Occluder) || _activeMaskLayers.HasFlag(MaskLayers.Walk))
+                {
+                    DecodedImage img = SpanMaskDecoder.Decode(data);
+                    PreviewImage.Source = BitmapConverter.ToBitmap(img);
+                    PreviewImage.IsVisible = true;
+                }
+                else
+                {
+                    PreviewImage.Source = null;
+                    PreviewImage.IsVisible = false;
+                }
+                return;
+            }
+
+            int maskW = info?.Width ?? sceneW ?? 1024;
+            int maskH = info?.Height ?? sceneH ?? 600;
+            DecodedImage decoded = RleMaskDecoder.Decode(data, maskW, maskH, idMap, table1536, _activeMaskLayers);
+            PreviewImage.Source = BitmapConverter.ToBitmap(decoded);
+            PreviewImage.IsVisible = true;
+
+            FsNode archive = _selectedNode.Parent ?? _selectedNode;
+            UpdateSceneMaskOverlays(archive, _activeMaskLayers, excludeNode: _selectedNode);
+        }
+        else if (_currentContent is SceneResource scene)
+        {
+            UpdateSceneMaskOverlays(scene.Archive, _activeMaskLayers);
+        }
+    }
+
+    private void UpdateSceneMaskOverlays(FsNode archive, MaskLayers layers, FsNode? excludeNode = null)
+    {
+        if (_vfs is null)
+        {
+            SceneMaskImage.IsVisible = false;
+            return;
+        }
+
+        FsNode? rleMaskNode = archive.Children.FirstOrDefault(c => c.Kind == EntryKind.Mask && !IsOccluderNode(c));
+        List<FsNode> occluderNodes = archive.Children.Where(c => c.Kind == EntryKind.Mask && IsOccluderNode(c) && c != excludeNode).ToList();
+
+        bool showRle = (excludeNode is null) && layers != MaskLayers.None &&
+            (layers.HasFlag(MaskLayers.Walk) || layers.HasFlag(MaskLayers.Hotspot) || layers.HasFlag(MaskLayers.Depth) || layers.HasFlag(MaskLayers.Material));
+        bool showOcc = layers.HasFlag(MaskLayers.Occluder) && occluderNodes.Count > 0;
+
+        if (!showRle && !showOcc)
+        {
+            SceneMaskImage.IsVisible = false;
+            return;
+        }
+
+        var bg = _vfs.SceneBackgroundFor(archive);
+        int sceneW = bg?.Width ?? 1024;
+        int sceneH = bg?.Height ?? 600;
+
+        byte[]? table1536 = _vfs.SceneAttributeTableFor(archive);
+        byte[]? idMap = table1536 is not null ? RleMaskDecoder.ExtractObjectMapping(table1536) : null;
+
+        var compositePixels = new byte[sceneW * sceneH * 4];
+
+        if (showRle && rleMaskNode is not null)
+        {
+            byte[] rleData = _vfs.ReadBytes(rleMaskNode);
+            var rleImg = RleMaskDecoder.Decode(rleData, sceneW, sceneH, idMap, table1536, layers);
+            Array.Copy(rleImg.Pixels, compositePixels, Math.Min(rleImg.Pixels.Length, compositePixels.Length));
+        }
+
+        if (showOcc)
+        {
+            foreach (var occNode in occluderNodes)
+            {
+                byte[] occData = _vfs.ReadBytes(occNode);
+                if (SparseMaskDecoder.Detect(occData, sceneW, sceneH) is { } sm)
+                {
+                    var occImg = SparseMaskDecoder.Decode(occData, sceneW, sceneH, idMap, colorSeed: occNode.EntryIndex);
+                    BlendOver(compositePixels, occImg.Pixels);
+                }
+                else if (SpanMaskDecoder.IsSpanMask(occData))
+                {
+                    var occImg = SpanMaskDecoder.Decode(occData);
+                    BlendAt(compositePixels, sceneW, sceneH, occImg.Pixels, occImg.Width, occImg.Height, occNode.Image?.X ?? 0, occNode.Image?.Y ?? 0);
+                }
+            }
+        }
+
+        SceneMaskImage.Source = BitmapConverter.ToBitmap(new DecodedImage(sceneW, sceneH, compositePixels));
+        SceneMaskImage.Width = sceneW;
+        SceneMaskImage.Height = sceneH;
+        SceneMaskImage.IsVisible = true;
+    }
+
+    private bool IsOccluderNode(FsNode node)
+    {
+        if (node.Kind != EntryKind.Mask || _vfs is null) return false;
+        try
+        {
+            using var s = _vfs.OpenFile(node);
+            Span<byte> head = stackalloc byte[16];
+            int read = s.Read(head);
+            if (read >= 6 && SpanMaskDecoder.IsSpanMask(head[..read])) return true;
+            if (read >= 9 && head[6] is 2 or 4) return true;
+        }
+        catch { }
+        return false;
+    }
+
+    private static void BlendOver(byte[] dst, byte[] src)
+    {
+        int len = Math.Min(dst.Length, src.Length);
+        for (int p = 0; p < len; p += 4)
+        {
+            byte a = src[p + 3];
+            if (a > 0)
+            {
+                dst[p + 0] = src[p + 0];
+                dst[p + 1] = src[p + 1];
+                dst[p + 2] = src[p + 2];
+                dst[p + 3] = a;
+            }
+        }
+    }
+
+    private static void BlendAt(byte[] dst, int dstW, int dstH, byte[] src, int srcW, int srcH, int posX, int posY)
+    {
+        for (int y = 0; y < srcH; y++)
+        {
+            int dy = posY + y;
+            if (dy < 0 || dy >= dstH) continue;
+            for (int x = 0; x < srcW; x++)
+            {
+                int dx = posX + x;
+                if (dx < 0 || dx >= dstW) continue;
+                int srcIdx = (y * srcW + x) * 4;
+                byte a = src[srcIdx + 3];
+                if (a > 0)
+                {
+                    int dstIdx = (dy * dstW + dx) * 4;
+                    dst[dstIdx + 0] = src[srcIdx + 0];
+                    dst[dstIdx + 1] = src[srcIdx + 1];
+                    dst[dstIdx + 2] = src[srcIdx + 2];
+                    dst[dstIdx + 3] = a;
+                }
+            }
+        }
+    }
+
     private void ShowImage(ImageResource image)
     {
         PreviewImage.Source = BitmapConverter.ToBitmap(image.Image);
@@ -1822,6 +2099,19 @@ public partial class MainWindow : Window
             ImageBgGreyedRadio.IsChecked = mode == "greyed";
         }
         finally { _syncingBackgroundToggles = false; }
+
+        bool isMask = image.Kind.Contains("mask", StringComparison.OrdinalIgnoreCase);
+        if (isMask && _selectedNode is not null)
+        {
+            UpdateMaskLayerButtonsForNode(_selectedNode);
+            ImageMaskTypeGroup.IsVisible = true;
+            ApplyMaskLayers();
+        }
+        else
+        {
+            ImageMaskTypeGroup.IsVisible = false;
+            SceneMaskImage.IsVisible = false;
+        }
 
         LayoutImageStage(image);
         ImagePanel.IsVisible = true;
@@ -1899,6 +2189,19 @@ public partial class MainWindow : Window
         Canvas.SetLeft(PreviewImage, 0);
         Canvas.SetTop(PreviewImage, 0);
 
+        bool hasMasks = scene.Archive.Children.Any(c => c.Kind == EntryKind.Mask);
+        if (hasMasks)
+        {
+            UpdateMaskLayerButtonsForNode(scene.Archive);
+            ImageMaskTypeGroup.IsVisible = true;
+            UpdateSceneMaskOverlays(scene.Archive, _activeMaskLayers);
+        }
+        else
+        {
+            ImageMaskTypeGroup.IsVisible = false;
+            SceneMaskImage.IsVisible = false;
+        }
+
         // Composite overlay entries onto the scene canvas and populate the sidebar checklist.
         PopulateSceneOverlays(scene);
 
@@ -1929,10 +2232,29 @@ public partial class MainWindow : Window
             try
             {
                 byte[] data = vfs.ReadBytes(child);
-                if (OverlayDecoder.TryDecode(data) is not { } ov)
-                    continue;
+                DecodedImage? overlayImg = null;
+                int posX = 0, posY = 0;
+                string kind = "overlay";
 
-                Bitmap? bmp = BitmapConverter.ToBitmap(ov.Image);
+                if (SpriteAsset.Parse(data) is { } sprite1)
+                {
+                    var frame = sprite1.DecodeFrame(0);
+                    overlayImg = frame.Image;
+                    posX = frame.X;
+                    posY = frame.Y;
+                    kind = "overlay (sprite)";
+                }
+                else if (OverlayDecoder.TryDecode(data) is { } ov)
+                {
+                    overlayImg = ov.Image;
+                    posX = ov.Info.X;
+                    posY = ov.Info.Y;
+                    kind = ov.Info.IsRectangular ? "overlay (rect)" : "overlay";
+                }
+
+                if (overlayImg is null) continue;
+
+                Bitmap? bmp = BitmapConverter.ToBitmap(overlayImg);
                 if (bmp is null)
                     continue;
 
@@ -1942,16 +2264,15 @@ public partial class MainWindow : Window
                     Stretch = Stretch.None,
                 };
                 RenderOptions.SetBitmapInterpolationMode(img, BitmapInterpolationMode.None);
-                Canvas.SetLeft(img, ov.Info.X);
-                Canvas.SetTop(img, ov.Info.Y);
+                Canvas.SetLeft(img, posX);
+                Canvas.SetTop(img, posY);
                 SceneOverlayLayer.Children.Add(img);
 
-                string kind = ov.Info.IsRectangular ? "overlay (rect)" : "overlay";
                 var item = new SceneOverlayItem
                 {
                     DisplayName = $"{child.Name}  {kind}",
-                    X = ov.Info.X,
-                    Y = ov.Info.Y,
+                    X = posX,
+                    Y = posY,
                     OverlayBitmap = bmp,
                     CanvasImage = img,
                 };
@@ -2347,8 +2668,12 @@ public partial class MainWindow : Window
             AudioFormat.Wav => $"{sound.Pcm.SampleRate:N0} Hz, {(sound.Pcm.Channels == 1 ? "mono" : "stereo")}, {sound.Pcm.BitsPerSample}-bit WAV",
             _ => $"{sound.Pcm.SampleRate:N0} Hz, {(sound.Pcm.Channels == 1 ? "mono" : "stereo")}, {sound.Pcm.BitsPerSample}-bit PCM",
         };
+        string subtitleLine = !string.IsNullOrWhiteSpace(_selectedNode?.Subtitle)
+            ? $"\n\n\"{_selectedNode.Subtitle}\""
+            : "";
         SoundInfoText.Text = $"{_selectedNode?.DisplayName}\n{formatDesc}" +
-                             (_selectedNode?.Kind == EntryKind.Voice && sound.Pcm.Format == AudioFormat.RawPcm ? $"  (rate assumed; change it in Settings > Playback)" : "");
+                             (_selectedNode?.Kind == EntryKind.Voice && sound.Pcm.Format == AudioFormat.RawPcm ? $"  (rate assumed; change it in Settings > Playback)" : "") +
+                             subtitleLine;
         SoundSlider.Value = 0;
         SoundCurrentTimeText.Text = "0:00";
         SoundTotalTimeText.Text = VirtualFileSystem.FormatDuration(sound.DurationSeconds);

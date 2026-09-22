@@ -29,9 +29,11 @@ public sealed class VirtualFileSystem
     public const string VoiceFolder = "Voice";
     public const string LipSyncFolder = "Lip-sync";
     public const string VideoFolder = "Video";
+    public const string DialogueFolder = "Dialogue";
     public const string GlobalFolder = "Global Data";
 
     public const int VoiceGroupSize = 500;
+    public const int DialogueGroupSize = 500;
 
     public static readonly AudioInfo MusicPcm = new() { SampleRate = 16_000, Channels = 2, BitsPerSample = 16 };
     public static readonly AudioInfo AmbientPcm = new() { SampleRate = 22_050, Channels = 2, BitsPerSample = 16 };
@@ -81,11 +83,12 @@ public sealed class VirtualFileSystem
         public int VoiceClips { get; set; }
         public int Videos { get; set; }
         public int Visemes { get; set; }
+        public int Phrases { get; set; }
         public bool FromCache { get; set; }
 
         public override string ToString() =>
             $"{SceneArchives} scenes: {Backgrounds} backgrounds, {Masks} masks, {Overlays} overlays, {Animations} animations; " +
-            $"{AudioClips} audio clips, {VoiceClips} voice lines, {Videos} videos, {Visemes} lip-sync tracks";
+            $"{AudioClips} audio clips, {VoiceClips} voice lines, {Videos} videos, {Visemes} lip-sync tracks, {Phrases} dialogue phrases";
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -153,6 +156,8 @@ public sealed class VirtualFileSystem
         lipSync.FriendlyName = SceneCatalog.GetCategoryTitle(LipSyncFolder, activeLanguage);
         FsNode video = Folder(root, VideoFolder);
         video.FriendlyName = SceneCatalog.GetCategoryTitle(VideoFolder, activeLanguage);
+        FsNode dialogue = Folder(root, DialogueFolder);
+        dialogue.FriendlyName = SceneCatalog.GetCategoryTitle(DialogueFolder, activeLanguage);
         FsNode global = Folder(root, GlobalFolder);
         global.FriendlyName = SceneCatalog.GetCategoryTitle(GlobalFolder, activeLanguage);
 
@@ -198,6 +203,7 @@ public sealed class VirtualFileSystem
         cache.Save();
         summary.FromCache = anyFromCache;
 
+        Dictionary<int, string>? transcripts = null;
         foreach (string path in resourceFiles)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -227,6 +233,14 @@ public sealed class VirtualFileSystem
                 progress?.Invoke($"Reading {name}");
                 summary.Visemes += Attach(lipSync, BuildVisemeArchive(path)).Children.Count;
             }
+            else if (upper == "RESOURCE.003" && (gameVersion == GameVersion.Runaway2 || gameVersion == GameVersion.Runaway3))
+            {
+                progress?.Invoke($"Reading {name}");
+                var (dNode, dTranscripts) = BuildPhraseArchive(path, gameVersion);
+                Attach(dialogue, dNode);
+                summary.Phrases = dTranscripts.Count;
+                transcripts = dTranscripts;
+            }
             else if (upper == "RESOURCE.000")
             {
                 progress?.Invoke($"Reading {name}");
@@ -241,7 +255,7 @@ public sealed class VirtualFileSystem
         if (dataaDir is not null)
         {
             progress?.Invoke("Reading voice shards");
-            summary.VoiceClips = BuildVoice(voice, dataaDir, gameVersion);
+            summary.VoiceClips = BuildVoice(voice, dataaDir, gameVersion, transcripts);
         }
 
         if (datavDir is not null)
@@ -547,7 +561,64 @@ public sealed class VirtualFileSystem
         };
     }
 
-    private static int BuildVoice(FsNode voice, string dataaDir, GameVersion gameVersion)
+    private static (FsNode Node, Dictionary<int, string> Transcripts) BuildPhraseArchive(string path, GameVersion gameVersion)
+    {
+        var node = new FsNode
+        {
+            NodeType = FsNodeType.Directory,
+            Name = Path.GetFileName(path),
+            ArchivePath = path,
+            Size = new FileInfo(path).Length,
+        };
+
+        var transcripts = new Dictionary<int, string>();
+        List<PhraseArchive.Phrase> phrases;
+        using (FileStream f = File.OpenRead(path))
+            phrases = PhraseArchive.ReadPhrases(f);
+
+        var groups = new Dictionary<int, FsNode>();
+        foreach (PhraseArchive.Phrase phrase in phrases)
+        {
+            if (!string.IsNullOrEmpty(phrase.Text))
+                transcripts[phrase.Index] = phrase.Text;
+
+            int g = phrase.Index / DialogueGroupSize;
+            if (!groups.TryGetValue(g, out FsNode? group))
+            {
+                int lo = g * DialogueGroupSize;
+                group = new FsNode
+                {
+                    NodeType = FsNodeType.Directory,
+                    Name = $"{lo:00000}-{lo + DialogueGroupSize - 1:00000}",
+                    ArchivePath = path,
+                };
+                groups[g] = group;
+                Attach(node, group);
+            }
+
+            long recOffset = 4 + (long)phrases.Count * 4 + (long)phrase.Index * PhraseArchive.RecordSize;
+            string preview = phrase.Text.Length > 40 ? phrase.Text[..37] + "..." : phrase.Text;
+            var phraseNode = new FsNode
+            {
+                NodeType = FsNodeType.File | FsNodeType.InArchive,
+                Kind = EntryKind.Dialogue,
+                Name = $"d{phrase.Index:00000}",
+                FriendlyName = string.IsNullOrEmpty(phrase.Text)
+                    ? $"d{phrase.Index:00000} (ID {phrase.Id})"
+                    : $"d{phrase.Index:00000} (ID {phrase.Id})  \"{preview}\"",
+                Offset = recOffset,
+                Size = PhraseArchive.RecordSize,
+                EntryIndex = phrase.Index,
+                ArchivePath = path,
+                Subtitle = phrase.Text,
+            };
+            Attach(group, phraseNode);
+        }
+
+        return (node, transcripts);
+    }
+
+    private static int BuildVoice(FsNode voice, string dataaDir, GameVersion gameVersion, Dictionary<int, string>? transcripts = null)
     {
         if (gameVersion is GameVersion.Runaway2 or GameVersion.Runaway3)
         {
@@ -586,7 +657,16 @@ public sealed class VirtualFileSystem
                     ArchivePath = clip.ShardPath,
                     Audio = voiceMp3,
                 };
-                node.FriendlyName = $"{node.Name}  {FormatDuration(VoicePcm.DurationSeconds(clip.Size))}";
+                if (transcripts is not null && transcripts.TryGetValue(clip.Index, out string? sub) && !string.IsNullOrEmpty(sub))
+                {
+                    node.Subtitle = sub;
+                    string preview = sub.Length > 35 ? sub[..32] + "..." : sub;
+                    node.FriendlyName = $"{node.Name}  \"{preview}\"";
+                }
+                else
+                {
+                    node.FriendlyName = $"{node.Name}  {FormatDuration(VoicePcm.DurationSeconds(clip.Size))}";
+                }
                 Attach(group, node);
             }
             return clips.Count;
@@ -629,7 +709,16 @@ public sealed class VirtualFileSystem
                 ArchivePath = clip.ShardPath,
                 Audio = VoicePcm,
             };
-            node.FriendlyName = $"{node.Name}  {FormatDuration(VoicePcm.DurationSeconds(clip.Size))}";
+            if (transcripts is not null && transcripts.TryGetValue(clip.Index, out string? sub) && !string.IsNullOrEmpty(sub))
+            {
+                node.Subtitle = sub;
+                string preview = sub.Length > 35 ? sub[..32] + "..." : sub;
+                node.FriendlyName = $"{node.Name}  \"{preview}\"";
+            }
+            else
+            {
+                node.FriendlyName = $"{node.Name}  {FormatDuration(VoicePcm.DurationSeconds(clip.Size))}";
+            }
             Attach(group, node);
         }
         return r1Clips.Count;

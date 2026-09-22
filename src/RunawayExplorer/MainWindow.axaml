@@ -205,6 +205,29 @@
                 <DockPanel x:Name="ImagePanel" IsVisible="False">
                     <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
                         <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right">
+                            <StackPanel x:Name="ImageMaskTypeGroup" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0" IsVisible="False">
+                                <Image Source="{StaticResource ModLayersIcon}" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="{DynamicResource Label_Mask}" VerticalAlignment="Center" Margin="0,0,6,0" Opacity="0.85"/>
+                                <Border Classes="segmented" VerticalAlignment="Center" ToolTip.Tip="{DynamicResource ToolTip_MaskLayers}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <ToggleButton x:Name="MaskTypeWalkToggle" Classes="segment"
+                                                      Content="{DynamicResource Option_MaskWalk}" Click="MaskTypeToggle_Click"
+                                                      PointerPressed="MaskTypeToggle_PointerPressed" Tag="walk"/>
+                                        <ToggleButton x:Name="MaskTypeHotspotToggle" Classes="segment"
+                                                      Content="{DynamicResource Option_MaskHotspot}" Click="MaskTypeToggle_Click"
+                                                      PointerPressed="MaskTypeToggle_PointerPressed" Tag="hotspot"/>
+                                        <ToggleButton x:Name="MaskTypeDepthToggle" Classes="segment"
+                                                      Content="{DynamicResource Option_MaskDepth}" Click="MaskTypeToggle_Click"
+                                                      PointerPressed="MaskTypeToggle_PointerPressed" Tag="depth"/>
+                                        <ToggleButton x:Name="MaskTypeMaterialToggle" Classes="segment"
+                                                      Content="{DynamicResource Option_MaskMaterial}" Click="MaskTypeToggle_Click"
+                                                      PointerPressed="MaskTypeToggle_PointerPressed" Tag="material"/>
+                                        <ToggleButton x:Name="MaskTypeOccluderToggle" Classes="segment"
+                                                      Content="{DynamicResource Option_MaskOccluder}" Click="MaskTypeToggle_Click"
+                                                      PointerPressed="MaskTypeToggle_PointerPressed" Tag="occluder"/>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
                             <StackPanel x:Name="ImageBackgroundGroup" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0" IsVisible="False">
                                 <Image Source="{StaticResource ModLayersIcon}" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                 <TextBlock Text="{DynamicResource Label_Background}" VerticalAlignment="Center" Margin="0,0,6,0" Opacity="0.85"/>
@@ -291,6 +314,8 @@
                                 <Canvas x:Name="ImageStage" ClipToBounds="True">
                                     <Image x:Name="ImageBackground" Canvas.Left="0" Canvas.Top="0" Stretch="None"
                                            RenderOptions.BitmapInterpolationMode="None"/>
+                                    <Image x:Name="SceneMaskImage" Canvas.Left="0" Canvas.Top="0" Stretch="None"
+                                           RenderOptions.BitmapInterpolationMode="None" Opacity="0.55" IsVisible="False"/>
                                     <Canvas x:Name="SceneOverlayLayer" Canvas.Left="0" Canvas.Top="0"/>
                                     <Image x:Name="PreviewImage" Canvas.Left="0" Canvas.Top="0" Stretch="None"
                                            RenderOptions.BitmapInterpolationMode="None"/>

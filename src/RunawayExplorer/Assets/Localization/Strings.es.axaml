@@ -73,6 +73,13 @@
     <x:String x:Key="Option_BackgroundNo">no</x:String>
     <x:String x:Key="Option_BackgroundYes">sí</x:String>
     <x:String x:Key="Option_BackgroundGreyed">en gris</x:String>
+    <x:String x:Key="Label_Mask">máscara</x:String>
+    <x:String x:Key="Option_MaskWalk">caminar</x:String>
+    <x:String x:Key="Option_MaskHotspot">objetos</x:String>
+    <x:String x:Key="Option_MaskDepth">profundidad</x:String>
+    <x:String x:Key="Option_MaskMaterial">sonido</x:String>
+    <x:String x:Key="Option_MaskOccluder">oclusiones</x:String>
+    <x:String x:Key="ToolTip_MaskLayers">Filtrar capas de máscara: caminar, objetos interactivos, profundidad, sonido de pasos, oclusiones (Clic derecho para aislar)</x:String>
     <x:String x:Key="Toolbar_Export">Exportar decodificado</x:String>
     <x:String x:Key="Toolbar_ExportRaw">Exportar en bruto</x:String>
 

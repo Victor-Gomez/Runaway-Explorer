@@ -27,7 +27,7 @@
             <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}"/>
             <Setter Property="Padding" Value="1"/>
         </Style>
-        <Style Selector="RadioButton.segment">
+        <Style Selector="RadioButton.segment, ToggleButton.segment">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}"/>
             <Setter Property="BorderThickness" Value="0"/>
@@ -56,15 +56,15 @@
                 </ControlTemplate>
             </Setter>
         </Style>
-        <Style Selector="RadioButton.segment:checked">
+        <Style Selector="RadioButton.segment:checked, ToggleButton.segment:checked">
             <Setter Property="Background" Value="{DynamicResource SegmentSelectedBackgroundBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource SegmentSelectedForegroundBrush}"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
         </Style>
-        <Style Selector="RadioButton.segment:pointerover:not(:checked)">
+        <Style Selector="RadioButton.segment:pointerover:not(:checked), ToggleButton.segment:pointerover:not(:checked)">
             <Setter Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}"/>
         </Style>
-        <Style Selector="RadioButton.segment:checked:pointerover">
+        <Style Selector="RadioButton.segment:checked:pointerover, ToggleButton.segment:checked:pointerover">
             <Setter Property="Background" Value="{DynamicResource SegmentSelectedBackgroundBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource SegmentSelectedForegroundBrush}"/>
         </Style>

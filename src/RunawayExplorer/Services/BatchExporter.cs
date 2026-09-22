@@ -105,7 +105,7 @@ public static class BatchExporter
                 node.Audio?.Format == AudioFormat.Mp3 ? $"{node.Name}.mp3" : $"{node.Name}.wav",
             // DATAVB02.001, DATAVB02.002, ... are different videos: keep the numeric suffix in the name.
             EntryKind.Video => $"{Path.GetFileNameWithoutExtension(node.Name)}_{Path.GetExtension(node.Name).TrimStart('.')}.bik",
-            EntryKind.Viseme => $"{node.Name}.txt",
+            EntryKind.Viseme or EntryKind.Dialogue => $"{node.Name}.txt",
             _ => $"{node.Name}.bin",
         };
     }
@@ -163,6 +163,13 @@ public static class BatchExporter
             case EntryKind.Overlay:
             {
                 byte[] data = vfs.ReadBytes(file);
+                if (SpriteAsset.Parse(data) is { } sprite1)
+                {
+                    var frame = sprite1.DecodeFrame(0);
+                    if (frame.Image is not null)
+                        PngWriter.Write(frame.Image, path);
+                    return BatchExportResult.Exported;
+                }
                 (DecodedImage image, _) = OverlayDecoder.TryDecode(data) ?? throw new InvalidDataException("not an overlay");
                 PngWriter.Write(image, path);
                 return BatchExportResult.Exported;
@@ -201,6 +208,12 @@ public static class BatchExporter
             case EntryKind.Viseme:
             {
                 File.WriteAllText(path, VisemeArchive.ToText(vfs.ReadBytes(file)));
+                return BatchExportResult.Exported;
+            }
+
+            case EntryKind.Dialogue:
+            {
+                File.WriteAllText(path, file.Subtitle ?? "");
                 return BatchExportResult.Exported;
             }
 

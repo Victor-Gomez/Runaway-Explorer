@@ -26,6 +26,18 @@ public static class EntryClassifier
 
         if (SpriteAsset.Parse(data) is { } sprite)
         {
+            if (sprite.FrameCount == 1)
+            {
+                return new EntryClassification(EntryKind.Overlay, new ImageInfo
+                {
+                    X = sprite.Bounds.X,
+                    Y = sprite.Bounds.Y,
+                    Width = sprite.Bounds.Width,
+                    Height = sprite.Bounds.Height,
+                    Frames = 1,
+                });
+            }
+
             return new EntryClassification(EntryKind.Animation, new ImageInfo
             {
                 X = sprite.Bounds.X,
@@ -76,6 +88,11 @@ public static class EntryClassifier
                 Height = sparseMask.Height,
                 IsMask = true,
             });
+        }
+
+        if (SpanMaskDecoder.Detect(data) is { } spanMask)
+        {
+            return new EntryClassification(EntryKind.Mask, spanMask);
         }
 
         return EntryClassification.DataEntry;

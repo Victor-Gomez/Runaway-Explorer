@@ -35,39 +35,95 @@ public static class WaveformRenderer
     private const double MinBarFraction = 0.05;
 
     /// <summary>Peak-based downsample of the file. Each returned value is the max absolute sample magnitude
-    /// within its slice, normalised to <c>[0, 1]</c>. Empty array when the file isn't a canonical PCM WAV.</summary>
-    public static float[] SamplePeaks(string wavPath, int barCount = MaxPeakCount)
+    /// within its slice, normalised to <c>[0, 1]</c>. Supports both canonical PCM WAV and MP3 audio files.</summary>
+    public static float[] SamplePeaks(string audioPath, int barCount = MaxPeakCount)
     {
-        if (!File.Exists(wavPath) || barCount <= 0)
+        if (!File.Exists(audioPath) || barCount <= 0)
             return [];
 
-        (short[] samples, int channels) = TryReadPcmSamples(wavPath);
-        if (samples.Length == 0)
-            return [];
-
-        int frameCount = samples.Length / channels;
-        int framesPerBar = Math.Max(1, frameCount / barCount);
-        int effectiveBars = Math.Min(barCount, Math.Max(1, frameCount / framesPerBar));
-
-        var peaks = new float[effectiveBars];
-        for (int i = 0; i < effectiveBars; i++)
+        if (audioPath.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase))
         {
-            int startFrame = i * framesPerBar;
-            int endFrame = Math.Min(frameCount, startFrame + framesPerBar);
-            short maxAbs = 0;
-            for (int f = startFrame; f < endFrame; f++)
-            {
-                for (int c = 0; c < channels; c++)
-                {
-                    short v = samples[(f * channels) + c];
-                    short mag = v == short.MinValue ? short.MaxValue : Math.Abs(v);
-                    if (mag > maxAbs) maxAbs = mag;
-                }
-            }
-            peaks[i] = maxAbs / 32767f;
+            float[] mp3 = SampleMp3Peaks(audioPath, barCount);
+            if (mp3.Length > 0) return mp3;
         }
 
-        return peaks;
+        (short[] samples, int channels) = TryReadPcmSamples(audioPath);
+        if (samples.Length > 0)
+        {
+            int frameCount = samples.Length / channels;
+            int framesPerBar = Math.Max(1, frameCount / barCount);
+            int effectiveBars = Math.Min(barCount, Math.Max(1, frameCount / framesPerBar));
+
+            var peaks = new float[effectiveBars];
+            for (int i = 0; i < effectiveBars; i++)
+            {
+                int startFrame = i * framesPerBar;
+                int endFrame = Math.Min(frameCount, startFrame + framesPerBar);
+                short maxAbs = 0;
+                for (int f = startFrame; f < endFrame; f++)
+                {
+                    for (int c = 0; c < channels; c++)
+                    {
+                        short v = samples[(f * channels) + c];
+                        short mag = v == short.MinValue ? short.MaxValue : Math.Abs(v);
+                        if (mag > maxAbs) maxAbs = mag;
+                    }
+                }
+                peaks[i] = maxAbs / 32767f;
+            }
+
+            return peaks;
+        }
+
+        return SampleMp3Peaks(audioPath, barCount);
+    }
+
+    private static float[] SampleMp3Peaks(string path, int barCount)
+    {
+        try
+        {
+            using var stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var mpeg = new NLayer.MpegFile(stream);
+            int channels = mpeg.Channels;
+            if (channels <= 0 || barCount <= 0) return [];
+
+            long totalSamples = mpeg.Length / sizeof(float);
+            long totalFrames = totalSamples / channels;
+            if (totalFrames <= 0) return [];
+
+            long framesPerBar = Math.Max(1, totalFrames / barCount);
+            int effectiveBars = (int)Math.Min(barCount, Math.Max(1, totalFrames / framesPerBar));
+            var peaks = new float[effectiveBars];
+
+            float[] buffer = new float[4096 * Math.Max(1, channels)];
+            long currentFrame = 0;
+            int read;
+
+            while ((read = mpeg.ReadSamples(buffer, 0, buffer.Length)) > 0)
+            {
+                int readFrames = read / channels;
+                for (int f = 0; f < readFrames; f++)
+                {
+                    int barIndex = (int)Math.Min(effectiveBars - 1, (currentFrame + f) / framesPerBar);
+                    for (int c = 0; c < channels; c++)
+                    {
+                        float val = Math.Abs(buffer[f * channels + c]);
+                        if (val > peaks[barIndex])
+                            peaks[barIndex] = val;
+                    }
+                }
+                currentFrame += readFrames;
+            }
+
+            for (int i = 0; i < peaks.Length; i++)
+                peaks[i] = Math.Clamp(peaks[i], 0f, 1f);
+
+            return peaks;
+        }
+        catch
+        {
+            return [];
+        }
     }
 
     /// <summary>

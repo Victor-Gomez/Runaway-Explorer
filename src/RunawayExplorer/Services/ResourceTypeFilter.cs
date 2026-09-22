@@ -26,6 +26,7 @@ public sealed record ResourceTypeFilter(string Label, EntryKind[]? Kinds, string
         new("Voice", [EntryKind.Voice], "SoundTypeIcon"),
         new("Video", [EntryKind.Video], "VideoTypeIcon"),
         new("Lip-sync", [EntryKind.Viseme], "DataTypeIcon"),
+        new("Dialogue", [EntryKind.Dialogue], "DataTypeIcon"),
         new("Data (undecoded)", [EntryKind.Data, EntryKind.GlobalData, EntryKind.RawFile], "RawFileTypeIcon"),
     ];
 
@@ -49,6 +50,7 @@ public sealed record ResourceTypeFilter(string Label, EntryKind[]? Kinds, string
             new("Voces", [EntryKind.Voice], "SoundTypeIcon"),
             new("Vídeos", [EntryKind.Video], "VideoTypeIcon"),
             new("Sincronización labial", [EntryKind.Viseme], "DataTypeIcon"),
+            new("Diálogos", [EntryKind.Dialogue], "DataTypeIcon"),
             new("Datos (sin decodificar)", [EntryKind.Data, EntryKind.GlobalData, EntryKind.RawFile], "RawFileTypeIcon"),
         ];
     }

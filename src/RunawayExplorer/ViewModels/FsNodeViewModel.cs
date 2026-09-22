@@ -29,6 +29,7 @@ public sealed class FsNodeViewModel : INotifyPropertyChanged
         [EntryKind.Voice] = "SoundTypeIcon",
         [EntryKind.Video] = "VideoTypeIcon",
         [EntryKind.Viseme] = "DataTypeIcon",
+        [EntryKind.Dialogue] = "DataTypeIcon",
         [EntryKind.GlobalData] = "DataTypeIcon",
         [EntryKind.RawFile] = "RawFileTypeIcon",
     };

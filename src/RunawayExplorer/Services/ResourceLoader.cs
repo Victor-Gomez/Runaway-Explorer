@@ -65,19 +65,32 @@ public static class ResourceLoader
                         return new ImageResource(img, 0, 0, true, "scene mask");
                     }
 
+                    if (SpanMaskDecoder.IsSpanMask(data))
+                    {
+                        DecodedImage img = SpanMaskDecoder.Decode(data);
+                        return new ImageResource(img, info?.X ?? 0, info?.Y ?? 0, true, "polygon mask");
+                    }
+
                     if (info is null)
                     {
-                        if (RleMaskDecoder.TryDecode(data, idMap, sceneW, sceneH) is not { } md)
+                        if (RleMaskDecoder.TryDecode(data, idMap, sceneW, sceneH, table1536) is not { } md)
                             return new ErrorResource($"'{node.GetPath()}' no longer parses as an RLE scene mask.");
                         return new ImageResource(md.Image, 0, 0, true, "scene mask");
                     }
-                    DecodedImage image = RleMaskDecoder.Decode(data, info.Width, info.Height, idMap);
+                    DecodedImage image = RleMaskDecoder.Decode(data, info.Width, info.Height, idMap, table1536);
                     return new ImageResource(image, 0, 0, true, "scene mask");
                 }
 
                 case EntryKind.Overlay:
                 {
                     byte[] data = vfs.ReadBytes(node);
+                    if (SpriteAsset.Parse(data) is { } sprite1)
+                    {
+                        var frame = sprite1.DecodeFrame(0);
+                        if (frame.Image is null)
+                            return new ErrorResource($"'{node.GetPath()}' has empty overlay frame.");
+                        return new ImageResource(frame.Image, frame.X, frame.Y, true, "overlay");
+                    }
                     if (OverlayDecoder.TryDecode(data) is not { } ov)
                         return new ErrorResource($"'{node.GetPath()}' no longer parses as an overlay.");
                     return new ImageResource(ov.Image, ov.Info.X, ov.Info.Y, true, ov.Info.IsRectangular ? "overlay (rectangular)" : "overlay");
@@ -156,6 +169,23 @@ public static class ResourceLoader
                     return new TextResource(sb.ToString());
                 }
 
+                case EntryKind.Dialogue:
+                {
+                    var sb = new StringBuilder();
+                    sb.Append("Dialogue phrase ").Append(node.Name);
+                    if (node.EntryIndex >= 0)
+                    {
+                        sb.Append(" (index ").Append(node.EntryIndex)
+                          .Append(")\nPairs with voice clip: VOICE_").Append(node.EntryIndex.ToString("00000")).Append("\n\n");
+                    }
+                    else
+                    {
+                        sb.Append("\n\n");
+                    }
+                    sb.Append(node.Subtitle ?? "(empty)");
+                    return new TextResource(sb.ToString());
+                }
+
                 case EntryKind.Data:
                 case EntryKind.GlobalData:
                 case EntryKind.RawFile:
@@ -165,7 +195,8 @@ public static class ResourceLoader
                     int take = (int)Math.Min(s.Length, RawFormat.MaxDumpBytes);
                     var head = new byte[take];
                     s.ReadExactly(head);
-                    string header = DescribeRaw(node, s.Length);
+                    byte[]? fullData = node.Kind == EntryKind.Data && node.Size == 1536 ? vfs.ReadBytes(node) : null;
+                    string header = DescribeRaw(node, s.Length, fullData);
                     return new TextResource(header + RawFormat.ToHexDump(head) +
                         (s.Length > take ? $"\n... {s.Length - take:N0} more byte(s) not shown.\n" : string.Empty));
                 }
@@ -210,15 +241,66 @@ public static class ResourceLoader
         return new SceneResource(background, summary, archive);
     }
 
-    private static string DescribeRaw(FsNode node, long length)
+    private static string DescribeRaw(FsNode node, long length, byte[]? fullData = null)
     {
         string what = node.Kind switch
         {
+            EntryKind.Data when length == 1536 => "Scene-archive data entry: 1,536-byte Scene Attribute Table (6 parallel 256-byte lookup tables indexed by Mask ID 0..255).",
             EntryKind.Data => "Scene-archive data entry. Not an image: one of the per-scene tables whose purpose is still open (see docs/formats).",
             EntryKind.GlobalData => "RESOURCE.000 entry: fonts, the UI atlas or a localised text bitmap. These use codecs the viewer does not decode yet (see docs/formats §3.4-3.6).",
             EntryKind.RawFile => "No decoder claims this file; showing its bytes.",
             _ => "Raw bytes.",
         };
-        return $"{what}\n{length:N0} byte(s).\n\n";
+        string baseDesc = $"{what}\n{length:N0} byte(s).\n\n";
+        if (fullData is not null)
+        {
+            string breakdown = FormatAttributeTableBreakdown(fullData);
+            if (!string.IsNullOrEmpty(breakdown))
+                baseDesc += breakdown + "\n\nRaw hex dump:\n";
+        }
+        return baseDesc;
+    }
+
+    private static string FormatAttributeTableBreakdown(byte[] data)
+    {
+        int nonZero = 0;
+        for (int i = 0; i < Math.Min(data.Length, 1536); i++)
+            if (data[i] != 0) nonZero++;
+
+        if (nonZero == 0)
+            return string.Empty;
+
+        var sb = new StringBuilder();
+        sb.AppendLine("Active Zones (non-zero attributes in mask lookup):");
+        sb.AppendLine("Mask ID | Walkbox | Hotspot | Facing | Depth Scale | Light Tint | Footstep Material");
+        sb.AppendLine("--------+---------+---------+--------+-------------+------------+------------------");
+
+        for (int id = 0; id < 256; id++)
+        {
+            byte walk = data[id];
+            byte hot = data.Length > 256 + id ? data[256 + id] : (byte)0;
+            byte face = data.Length > 512 + id ? data[512 + id] : (byte)0;
+            byte depth = data.Length > 768 + id ? data[768 + id] : (byte)0;
+            byte light = data.Length > 1024 + id ? data[1024 + id] : (byte)0;
+            byte mat = data.Length > 1280 + id ? data[1280 + id] : (byte)0;
+
+            if (walk == 0 && hot == 0 && face == 0 && depth == 0 && light == 0 && mat == 0)
+                continue;
+
+            string matName = mat switch
+            {
+                0 => "Default",
+                1 => "Concrete/Stone",
+                2 => "Wood",
+                3 => "Dirt/Ground",
+                4 => "Metal",
+                5 => "Water",
+                _ => $"Material {mat}"
+            };
+
+            sb.AppendLine($"  {id,3}   |   {walk,3}   |   {hot,3}   |  {face,3}   |     {depth,3}     |    {light,3}     | {matName}");
+        }
+
+        return sb.ToString();
     }
 }

@@ -211,4 +211,82 @@ public class RleMaskDecoderTests
         Assert.Equal(palette[2].G, withMap.Pixels[1]);
         Assert.Equal(palette[2].R, withMap.Pixels[2]);
     }
+
+    [Fact]
+    public void DetectAttributePresence_IdentifiesAttributes()
+    {
+        var table = new byte[1536];
+        // Table 0: walkbox
+        table[0 * 256 + 1] = 5;
+        // Table 1: hotspot
+        table[1 * 256 + 2] = 8;
+        // Table 3: depth
+        table[3 * 256 + 3] = 12;
+        // Table 5: footstep material
+        table[5 * 256 + 4] = 2;
+
+        var presence = RleMaskDecoder.DetectAttributePresence(table);
+        Assert.True(presence.HasWalk);
+        Assert.True(presence.HasHotspot);
+        Assert.True(presence.HasDepth);
+        Assert.True(presence.HasMaterial);
+    }
+
+    [Fact]
+    public void DecodesWithMaskLayers_FiltersLayersAccurately()
+    {
+        // 4 pixels:
+        // ID 1: walkbox 1, no hotspot
+        // ID 2: hotspot 2, no walkbox
+        // ID 3: depth 10, no walkbox, no hotspot
+        // ID 4: material 2 (wood), no others
+        byte[] data =
+        [
+            1, 0x01, 0x00,
+            2, 0x01, 0x00,
+            3, 0x01, 0x00,
+            4, 0x01, 0x00,
+        ];
+
+        var table = new byte[1536];
+        table[0 * 256 + 1] = 1; // ID 1 is Walkbox 1
+        table[1 * 256 + 2] = 2; // ID 2 is Hotspot 2
+        table[3 * 256 + 3] = 10; // ID 3 is Depth 10
+        table[5 * 256 + 4] = 2;  // ID 4 is Material 2
+
+        // Test 1: MaskLayers.None -> all transparent (alpha = 0)
+        var noneImg = RleMaskDecoder.Decode(data, 4, 1, table1536: table, layers: MaskLayers.None);
+        for (int i = 0; i < 4; i++)
+        {
+            Assert.Equal(0, noneImg.Pixels[i * 4 + 3]);
+        }
+
+        // Test 2: MaskLayers.Walk only -> only pixel 0 is opaque
+        var walkImg = RleMaskDecoder.Decode(data, 4, 1, table1536: table, layers: MaskLayers.Walk);
+        Assert.Equal(255, walkImg.Pixels[0 * 4 + 3]);
+        Assert.Equal(0, walkImg.Pixels[1 * 4 + 3]);
+        Assert.Equal(0, walkImg.Pixels[2 * 4 + 3]);
+        Assert.Equal(0, walkImg.Pixels[3 * 4 + 3]);
+
+        // Test 3: MaskLayers.Hotspot only -> only pixel 1 is opaque
+        var hotImg = RleMaskDecoder.Decode(data, 4, 1, table1536: table, layers: MaskLayers.Hotspot);
+        Assert.Equal(0, hotImg.Pixels[0 * 4 + 3]);
+        Assert.Equal(255, hotImg.Pixels[1 * 4 + 3]);
+        Assert.Equal(0, hotImg.Pixels[2 * 4 + 3]);
+        Assert.Equal(0, hotImg.Pixels[3 * 4 + 3]);
+
+        // Test 4: Walk | Hotspot -> pixels 0 and 1 are opaque, pixels 2 and 3 are transparent
+        var comboImg = RleMaskDecoder.Decode(data, 4, 1, table1536: table, layers: MaskLayers.Walk | MaskLayers.Hotspot);
+        Assert.Equal(255, comboImg.Pixels[0 * 4 + 3]);
+        Assert.Equal(255, comboImg.Pixels[1 * 4 + 3]);
+        Assert.Equal(0, comboImg.Pixels[2 * 4 + 3]);
+        Assert.Equal(0, comboImg.Pixels[3 * 4 + 3]);
+
+        // Test 5: All -> all 4 pixels are opaque
+        var allImg = RleMaskDecoder.Decode(data, 4, 1, table1536: table, layers: MaskLayers.All);
+        Assert.Equal(255, allImg.Pixels[0 * 4 + 3]);
+        Assert.Equal(255, allImg.Pixels[1 * 4 + 3]);
+        Assert.Equal(255, allImg.Pixels[2 * 4 + 3]);
+        Assert.Equal(255, allImg.Pixels[3 * 4 + 3]);
+    }
 }
