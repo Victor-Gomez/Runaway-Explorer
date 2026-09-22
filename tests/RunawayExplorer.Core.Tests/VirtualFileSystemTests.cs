@@ -218,14 +218,92 @@ public class VirtualFileSystemTests
             first.FindNode(first.Root, "\\Scenes\\RESOURCE.H09\\e03")!.DisplayName,
             second.FindNode(second.Root, "\\Scenes\\RESOURCE.H09\\e03")!.DisplayName);
 
-        // Touch the archive: its key changes, so its cached answer no longer applies and it is rescanned.
+        // Modify the archive with new content: its content hash changes, so its cached answer no longer applies and it is rescanned.
         string archive = Path.Combine(install.Root, "Resource", "RESOURCE.H09");
-        File.SetLastWriteTimeUtc(archive, DateTime.UtcNow.AddMinutes(5));
+        File.WriteAllBytes(archive, SyntheticArchives.Scene([Raster(100, 100)]));
         ScanCache stale = ScanCache.Load(cachePath);
         Assert.Null(stale.TryGet(archive));
         VirtualFileSystem third = VirtualFileSystem.Init(install.Root, cache: stale);
-        Assert.Equal(4, third.FindNode(third.Root, "\\Scenes\\RESOURCE.H09")!.Children.Count);
+        Assert.Single(third.FindNode(third.Root, "\\Scenes\\RESOURCE.H09")!.Children);
         Assert.NotNull(stale.TryGet(archive));
+    }
+
+    [Fact]
+    public void ScanCache_HitsShippedCacheForKnownHash()
+    {
+        Assert.True(ScanCache.ShippedCount >= 75, $"Expected at least 75 shipped archive hashes, found {ScanCache.ShippedCount}");
+
+        // Load an ephemeral or empty cache with shipped enabled
+        string emptyPath = Path.Combine(Path.GetTempPath(), $"empty_cache_{Guid.NewGuid():N}.json");
+        ScanCache cache = ScanCache.Load(emptyPath, includeShipped: true);
+
+        // Verify lookup of known Runaway 1 Steam RESOURCE.A00 hash
+        const string a00Hash = "04e5d8652091d40aee69899c238b2004d977e09fa8b380515739389c704c5078";
+        var entries = cache.TryGetByHash(a00Hash);
+        Assert.NotNull(entries);
+        Assert.Equal(13, entries.Count);
+    }
+
+    [Fact]
+    public void ScanCache_PreservesCacheAcrossFileMove()
+    {
+        using var install = new FakeInstall();
+        string cachePath = Path.Combine(install.Root, "cache.json");
+
+        ScanCache cache = ScanCache.Load(cachePath);
+        string originalArchive = Path.Combine(install.Root, "Resource", "RESOURCE.H09");
+        _ = VirtualFileSystem.Init(install.Root, cache: cache);
+
+        // Copy archive to an entirely different path and change timestamp
+        string movedDir = Path.Combine(install.Root, "MovedResource");
+        Directory.CreateDirectory(movedDir);
+        string movedArchive = Path.Combine(movedDir, "RESOURCE.H09");
+        File.Copy(originalArchive, movedArchive);
+        File.SetLastWriteTimeUtc(movedArchive, DateTime.UtcNow.AddHours(2));
+
+        // Looking up the moved archive in the same cache should hit via content hash
+        var movedEntries = cache.TryGet(movedArchive);
+        Assert.NotNull(movedEntries);
+        Assert.Equal(4, movedEntries.Count);
+    }
+
+    [Fact]
+    public void ScanCache_ComputeHash_IsConsistent()
+    {
+        byte[] testData = "Runaway Explorer Asset Scan Cache"u8.ToArray();
+        string fromBytes = ScanCache.ComputeHash(testData);
+        using var ms = new MemoryStream(testData);
+        string fromStream = ScanCache.ComputeHash(ms);
+
+        Assert.Equal(64, fromBytes.Length);
+        Assert.Equal(fromBytes, fromStream);
+        Assert.Equal(fromBytes.ToLowerInvariant(), fromBytes);
+    }
+
+    [Fact]
+    public void RealGameInstall_IfPresent_LoadsFromShippedCacheInstantly()
+    {
+        const string steamPath = @"F:\Games\Steam\steamapps\common\Runaway A Road Adventure";
+        if (!Directory.Exists(steamPath))
+            return;
+
+        string tempCache = Path.Combine(Path.GetTempPath(), $"bench_cache_{Guid.NewGuid():N}.json");
+        try
+        {
+            var cache = ScanCache.Load(tempCache, includeShipped: true);
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var vfs = VirtualFileSystem.Init(steamPath, cache: cache);
+            sw.Stop();
+
+            Assert.True(vfs.Summary.FromCache, "Expected all scene archives to load from shipped cache");
+            Assert.Equal(74, vfs.Summary.SceneArchives);
+            Assert.True(sw.ElapsedMilliseconds < 2500, $"Expected load in under 2.5s, took {sw.ElapsedMilliseconds} ms");
+        }
+        finally
+        {
+            if (File.Exists(tempCache))
+                File.Delete(tempCache);
+        }
     }
 
     [Fact]
