@@ -2,23 +2,23 @@
 
 # Runaway Explorer
 
-A cross-platform viewer for the game assets of **Runaway: A Road Adventure** (Pendulo Studios, 2001),
+A cross-platform viewer for the game assets of **Runaway: A Road Adventure** (2001) and **Runaway 2: The Dream of the Turtle** (2006) by Pendulo Studios,
 created by [Victor Gomez](https://github.com/Victor-Gomez).
-Point it at an install and browse every scene background, overlay, sprite animation, music track,
-sound effect, voice line, lip-sync track and cutscene the game ships -- and export any of them.
+Point it at an install for either game (or configure both in Settings) and browse every scene background, overlay, sprite animation, music track,
+sound effect, voice line, lip-sync track and cutscene -- and export any of them.
 
-The game keeps everything in nameless offset-table archives with no file names, no extensions and no
-headers; the formats were reverse-engineered from the Steam release and are written up in
+The games keep everything in nameless offset-table archives with no file names, no extensions and no
+headers; the formats were reverse-engineered from the Steam releases and are written up in
 [`docs/formats/`](docs/formats/README.md).
 
 ![Runaway Explorer screenshot](docs/screenshot.png)
 
 ## Features
 
-- **Whole-install browsing.** Every archive is scanned once and its entries classified by what they
+- **Whole-install browsing.** Supports both *Runaway 1* and *Runaway 2*. Every archive is scanned once and its entries classified by what they
   actually are (a byte-exact structural check, not a guess). The tree is organised by kind: Scenes,
   Music, Ambient & SFX, Cinematic Audio, Voice, Lip-sync, Video, Global Data. Includes a pre-computed
-  hash-based scan cache for known files so first-time loading is near-instant (~200 ms).
+  hash-based scan cache for known files so first-time loading is near-instant (~200 ms for R1, ~900 ms for R2).
 - **Backgrounds, scene masks and overlays.** Raw RGB565 rasters (with width recovered from pixels),
   positioned row-record overlays (props, foreground layers, title cards, UI), and RLE scene masks
   (interaction hotspots, walkboxes, and depth planes). Overlays and scene masks can be drawn on their
@@ -26,19 +26,21 @@ headers; the formats were reverse-engineered from the Steam release and are writ
   the game uses.
 - **Sprite animations.** Frame-by-frame playback with scrubbing, stepping, looping and an adjustable
   frame rate, either on the animation's own bounding box or composited over the scene background at
-  the frames' absolute coordinates. Frames of different sizes line up because every pixel run carries
-  its own screen position.
-- **Sound & Video.** Music (16 kHz), ambient/SFX and cinematic audio (22 kHz), voice lines (16 kHz),
-  and Bink cutscenes with restored headers played via LibVLC with dedicated volume sliders, mute toggles (M),
+  the frames' absolute coordinates. Supports both R1 palette-based/RGB565 sprites and R2 truecolor RGBA
+  sprites with paired 8-bit alpha channels.
+- **Sound & Video.** Music (16 kHz in R1, WAV/MP3 in R2), ambient/SFX and cinematic audio (22 kHz),
+  voice lines (16 kHz in R1, 22 kHz across 10,000+ clips in R2), and Bink cutscenes with restored headers played via LibVLC with dedicated volume sliders, mute toggles (M),
   and interactive waveform click/drag seeking.
 - **Export & Clipboard.** Single entries or whole folders: PNG for images and scene masks, **animated PNG** or
   numbered **image sequence** (prompted via an in-app modal, with per-frame screen positions) for
   animations, WAV for audio, restored `.bik` for video, text for lip-sync tracks, raw bytes for anything
   else. Easily copy images and animation frames to the clipboard (Ctrl+C).
 - **Quick navigation & localisation.** Full English and Spanish interface with human-friendly chapter
-  and scene names, resource type filter, name search with quick clear (Esc), tree expand/collapse all,
+  and scene names for both games, resource type filter, name search with quick clear (Esc), tree expand/collapse all,
   clickable status bar paths, a fuzzy command palette (Ctrl+P), keyboard shortcuts (F1 lists them),
   and remembered selection per install.
+- **Dual-game configuration.** Switch between games seamlessly with separate install folder paths
+  managed in the Settings dialog.
 - **Update checks.** Optionally asks GitHub whether a newer release exists, then links you to it. Off
   until you say yes.
 
@@ -91,7 +93,7 @@ public documentation to build on. The single most useful lesson is recorded at t
 `docs/formats/README.md`: if a decoder needs a heuristic to find where an image starts, look again at
 the container.
 
-*Runaway: A Road Adventure* is a trademark of its respective owners. This is an unaffiliated fan-made
+*Runaway: A Road Adventure* and *Runaway 2: The Dream of the Turtle* are trademarks of their respective owners. This is an unaffiliated fan-made
 tool and ships no game data.
 
 The UI icons are from **[Lucide](https://lucide.dev)** (ISC licensed).
