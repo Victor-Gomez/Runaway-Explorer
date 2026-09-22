@@ -11,7 +11,7 @@ namespace RunawayExplorer.Core.Formats;
 public readonly record struct SpriteRecord(int FrameOffset, int X0, int W, int Y0, int Y1, int SegmentCount);
 
 /// <summary>One run of pixels: <paramref name="Count"/> RGB565 values at byte <paramref name="PixelOffset"/>, painted at screen (<paramref name="X"/>, <paramref name="Y"/>).</summary>
-public readonly record struct SpriteSegment(int X, int Y, int Count, int PixelOffset);
+public readonly record struct SpriteSegment(int X, int Y, int Count, int PixelOffset, bool HasAlpha = false);
 
 /// <summary>A decoded frame: the image cropped to its content, and where its top-left sits on the screen. <see cref="Image"/> is <see langword="null"/> for an empty frame.</summary>
 public readonly record struct SpriteFrame(DecodedImage? Image, int X, int Y)
@@ -21,27 +21,7 @@ public readonly record struct SpriteFrame(DecodedImage? Image, int X, int Y)
 
 /// <summary>
 /// Format 3 of the scene archives: an animated sprite.
-/// <code>
-/// [ descriptor records, 0 or more ]  { u32 0, u16 W, i16 -(W-1), u16 H, u16 0, u16 0 }
-/// record[N]                          { u32 frame_offset, u16 x0, w, y0, y1, u16 c }   14 bytes each
-/// frame data                         per frame, c × { u16 x, u16 y, u8 count (0 → 1), u16 rgb565[count] }
-/// </code>
-/// <para>
-/// <b>Every frame is a complete sprite.</b> Segments are absolute screen positions, in pixels; nothing
-/// carries over between frames; <c>x</c> is a pixel column, not a byte offset. A row wider than 255
-/// pixels is two consecutive segments on the same <c>y</c>. Most assets keep one box for the whole
-/// animation; 69 of 442 change it per frame, so <see cref="Bounds"/> is the union of every record's box.
-/// </para>
-/// <para>
-/// Identification: the first record's offset is 0; the table has no length field and is read until a
-/// record stops making sense (offset decreases or exceeds the asset, <c>w == 0</c>, <c>y1 &lt; y0</c>).
-/// <c>x0 == 0</c> is a legal position, not a terminator -- treating it as one truncated 8 assets. Then
-/// frame 0 must walk exactly to frame 1's offset; that separates a real animation from a data table
-/// that happens to start with a zero word.
-/// </para>
-/// <para>
-/// Timing is not stored anywhere in the format. The engine's own frame rate is not known.
-/// </para>
+/// Supports both Runaway 1 single-entry format and Runaway 2 paired header/data format.
 /// </summary>
 public sealed class SpriteAsset
 {
@@ -49,12 +29,13 @@ public sealed class SpriteAsset
 
     private readonly byte[] _data;
 
-    private SpriteAsset(byte[] data, IReadOnlyList<SpriteRecord> records, int dataOffset, int descriptorCount)
+    private SpriteAsset(byte[] data, IReadOnlyList<SpriteRecord> records, int dataOffset, int descriptorCount, bool isRunaway2 = false)
     {
         _data = data;
         Records = records;
         DataOffset = dataOffset;
         DescriptorCount = descriptorCount;
+        IsRunaway2 = isRunaway2;
 
         int bx = int.MaxValue, by = int.MaxValue, bx1 = 0, by1 = 0;
         foreach (SpriteRecord r in records)
@@ -64,7 +45,7 @@ public sealed class SpriteAsset
             bx1 = Math.Max(bx1, r.X0 + r.W);
             by1 = Math.Max(by1, r.Y1 + 1);
         }
-        Bounds = (bx, by, bx1 - bx, by1 - by);
+        Bounds = (bx == int.MaxValue ? 0 : bx, by == int.MaxValue ? 0 : by, Math.Max(0, bx1 - bx), Math.Max(0, by1 - by));
     }
 
     public IReadOnlyList<SpriteRecord> Records { get; }
@@ -76,6 +57,9 @@ public sealed class SpriteAsset
 
     /// <summary>Number of leading descriptor records skipped. Their purpose is unknown.</summary>
     public int DescriptorCount { get; }
+
+    /// <summary>True if this sprite uses the Runaway 2 6-byte segment headers and optional alpha channel.</summary>
+    public bool IsRunaway2 { get; }
 
     /// <summary>The union of every frame's box: the region of the screen the animation ever touches. The natural canvas for reassembly.</summary>
     public (int X, int Y, int Width, int Height) Bounds { get; }
@@ -91,6 +75,62 @@ public sealed class SpriteAsset
     {
         ArgumentNullException.ThrowIfNull(data);
 
+        // 1. Try parsing as Runaway 2 paired sprite
+        if (data.Length >= 16)
+        {
+            ushort fc = BinaryPrimitives.ReadUInt16LittleEndian(data);
+            uint fo0 = BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(2));
+            if (fc > 0 && fc <= 2000 && fo0 == 0)
+            {
+                int headerSize = 2 + fc * RecordSize;
+                if (data.Length >= headerSize)
+                {
+                    var r2Records = new List<SpriteRecord>(fc);
+                    bool validRecords = true;
+                    long prevFo = -1;
+                    for (int k = 0; k < fc; k++)
+                    {
+                        int rp = 2 + k * RecordSize;
+                        long fo = BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(rp));
+                        int x0 = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(rp + 4));
+                        int w = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(rp + 6));
+                        int y0 = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(rp + 8));
+                        int y1 = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(rp + 10));
+                        int c = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(rp + 12));
+                        if (fo < prevFo || fo > data.Length - headerSize || w == 0 || y1 < y0 || y1 >= 4096 || x0 + w > 4096)
+                        {
+                            validRecords = false;
+                            break;
+                        }
+                        r2Records.Add(new SpriteRecord((int)fo, x0, w, y0, y1, c));
+                        prevFo = fo;
+                    }
+
+                    if (validRecords)
+                    {
+                        // Verify frame 0 walk
+                        int p = headerSize;
+                        bool walkOk = true;
+                        for (int s = 0; s < r2Records[0].SegmentCount; s++)
+                        {
+                            if (p + 6 > data.Length) { walkOk = false; break; }
+                            byte flag = data[p + 4];
+                            byte cnt = data[p + 5];
+                            int bpp = flag == 0 ? 2 : (flag == 1 ? 3 : 0);
+                            if (bpp == 0 || p + 6 + cnt * bpp > data.Length) { walkOk = false; break; }
+                            p += 6 + cnt * bpp;
+                        }
+                        int end0 = r2Records.Count > 1 ? headerSize + r2Records[1].FrameOffset : data.Length;
+                        if (walkOk && p == end0)
+                        {
+                            return new SpriteAsset(data, r2Records, headerSize, descriptorCount: 0, isRunaway2: true);
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. Try parsing as Runaway 1 single-entry sprite
         if (data.Length < RecordSize || BinaryPrimitives.ReadUInt32LittleEndian(data) != 0)
             return null;
 
@@ -131,20 +171,20 @@ public sealed class SpriteAsset
         int dataOffset = i;
 
         // Frame 0 must walk cleanly to frame 1 (or to the end of the asset).
-        int p = dataOffset;
+        int pR1 = dataOffset;
         for (int s = 0; s < records[0].SegmentCount; s++)
         {
-            if (p + 5 > data.Length)
+            if (pR1 + 5 > data.Length)
                 return null;
-            int count = data[p + 4];
+            int count = data[pR1 + 4];
             if (count == 0) count = 1;
-            p += 5 + 2 * count;
+            pR1 += 5 + 2 * count;
         }
-        int end0 = records.Count > 1 ? dataOffset + records[1].FrameOffset : data.Length;
-        if (p != end0)
+        int end0R1 = records.Count > 1 ? dataOffset + records[1].FrameOffset : data.Length;
+        if (pR1 != end0R1)
             return null;
 
-        return new SpriteAsset(data, records, dataOffset, descriptors);
+        return new SpriteAsset(data, records, dataOffset, descriptors, isRunaway2: false);
     }
 
     /// <summary>The segments of frame <paramref name="index"/>. A truncated frame yields the segments that fit.</summary>
@@ -153,6 +193,28 @@ public sealed class SpriteAsset
         SpriteRecord rec = Records[index];
         int p = DataOffset + rec.FrameOffset;
         var segs = new List<SpriteSegment>(rec.SegmentCount);
+
+        if (IsRunaway2)
+        {
+            for (int s = 0; s < rec.SegmentCount; s++)
+            {
+                if (p + 6 > _data.Length)
+                    break;
+                int x = BinaryPrimitives.ReadUInt16LittleEndian(_data.AsSpan(p));
+                int y = BinaryPrimitives.ReadUInt16LittleEndian(_data.AsSpan(p + 2));
+                byte flag = _data[p + 4];
+                byte count = _data[p + 5];
+                bool hasAlpha = flag == 1;
+                int bpp = flag == 0 ? 2 : (flag == 1 ? 3 : 2);
+                p += 6;
+                if (p + count * bpp > _data.Length)
+                    break;
+                segs.Add(new SpriteSegment(x, y, count, p, hasAlpha));
+                p += count * bpp;
+            }
+            return segs;
+        }
+
         for (int s = 0; s < rec.SegmentCount; s++)
         {
             if (p + 5 > _data.Length)
@@ -164,7 +226,7 @@ public sealed class SpriteAsset
             p += 5;
             if (p + 2 * count > _data.Length)
                 break;
-            segs.Add(new SpriteSegment(x, y, count, p));
+            segs.Add(new SpriteSegment(x, y, count, p, HasAlpha: false));
             p += 2 * count;
         }
         return segs;
@@ -190,10 +252,50 @@ public sealed class SpriteAsset
         foreach (SpriteSegment s in segs)
         {
             int dst = ((s.Y - y0) * image.Width + (s.X - x0)) * 4;
-            Rgb565.CopyRow(_data, s.PixelOffset, image.Pixels, dst, s.Count);
+            if (s.HasAlpha)
+            {
+                int src = s.PixelOffset;
+                for (int k = 0; k < s.Count; k++)
+                {
+                    ushort p16 = BinaryPrimitives.ReadUInt16LittleEndian(_data.AsSpan(src));
+                    byte a = _data[src + 2];
+                    src += 3;
+
+                    byte r = (byte)((p16 >> 11) << 3);
+                    byte g = (byte)(((p16 >> 5) & 63) << 2);
+                    byte b = (byte)((p16 & 31) << 3);
+
+                    int outIdx = dst + k * 4;
+                    if (a == 255 || image.Pixels[outIdx + 3] == 0)
+                    {
+                        image.Pixels[outIdx] = b;
+                        image.Pixels[outIdx + 1] = g;
+                        image.Pixels[outIdx + 2] = r;
+                        image.Pixels[outIdx + 3] = a;
+                    }
+                    else
+                    {
+                        float srcA = a / 255f;
+                        float dstA = image.Pixels[outIdx + 3] / 255f;
+                        float outA = srcA + dstA * (1f - srcA);
+                        if (outA > 0)
+                        {
+                            image.Pixels[outIdx] = (byte)((b * srcA + image.Pixels[outIdx] * dstA * (1f - srcA)) / outA);
+                            image.Pixels[outIdx + 1] = (byte)((g * srcA + image.Pixels[outIdx + 1] * dstA * (1f - srcA)) / outA);
+                            image.Pixels[outIdx + 2] = (byte)((r * srcA + image.Pixels[outIdx + 2] * dstA * (1f - srcA)) / outA);
+                            image.Pixels[outIdx + 3] = (byte)(outA * 255f);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                Rgb565.CopyRow(_data, s.PixelOffset, image.Pixels, dst, s.Count);
+            }
         }
         return new SpriteFrame(image, x0, y0);
     }
+
 
     /// <summary>
     /// Frame <paramref name="index"/> placed on a canvas the size of <see cref="Bounds"/>, so every frame

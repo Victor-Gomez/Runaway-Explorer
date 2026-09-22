@@ -12,7 +12,10 @@ public readonly record struct MaskInfo(int Width, int Height, int RunCount, int 
 /// </summary>
 public static class RleMaskDecoder
 {
-    private static readonly int[] CandidateWidths = [1024, 1372, 1444, 1740, 2048, 2592];
+    private static readonly int[] CandidateWidths =
+    [
+        1024, 1224, 1236, 1280, 1372, 1444, 1468, 1560, 1564, 1584, 1600, 1648, 1688, 1740, 1828, 1852, 1920, 1924, 2048, 2592, 2616, 2740, 3288
+    ];
 
     /// <summary>
     /// Checks whether the data is a valid scanline-bounded RLE scene mask.

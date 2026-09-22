@@ -101,7 +101,8 @@ public static class BatchExporter
             EntryKind.Mask when img is not null => $"{node.Name}_{img.Width}x{img.Height}_mask.png",
             EntryKind.Overlay when img is not null => $"{node.Name}_{img.Width}x{img.Height}_at_{img.X}_{img.Y}.png",
             EntryKind.Animation => $"{node.Name}.png",
-            EntryKind.Music or EntryKind.Ambient or EntryKind.Cinematic or EntryKind.Voice => $"{node.Name}.wav",
+            EntryKind.Music or EntryKind.Ambient or EntryKind.Cinematic or EntryKind.Voice =>
+                node.Audio?.Format == AudioFormat.Mp3 ? $"{node.Name}.mp3" : $"{node.Name}.wav",
             // DATAVB02.001, DATAVB02.002, ... are different videos: keep the numeric suffix in the name.
             EntryKind.Video => $"{Path.GetFileNameWithoutExtension(node.Name)}_{Path.GetExtension(node.Name).TrimStart('.')}.bik",
             EntryKind.Viseme => $"{node.Name}.txt",
@@ -159,10 +160,13 @@ public static class BatchExporter
             case EntryKind.Voice:
             {
                 AudioInfo pcm = file.Audio ?? VirtualFileSystem.AmbientPcm;
-                int rate = file.Kind == EntryKind.Voice ? options.VoiceSampleRate : pcm.SampleRate;
                 using Stream src = vfs.OpenFile(file);
                 using FileStream dst = File.Create(path);
-                dst.Write(WavWriter.Header((int)Math.Min(src.Length, int.MaxValue), rate, pcm.Channels, pcm.BitsPerSample));
+                if (pcm.Format == AudioFormat.RawPcm)
+                {
+                    int rate = file.Kind == EntryKind.Voice ? options.VoiceSampleRate : pcm.SampleRate;
+                    dst.Write(WavWriter.Header((int)Math.Min(src.Length, int.MaxValue), rate, pcm.Channels, pcm.BitsPerSample));
+                }
                 src.CopyTo(dst);
                 return BatchExportResult.Exported;
             }

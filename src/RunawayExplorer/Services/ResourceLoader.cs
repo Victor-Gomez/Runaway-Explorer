@@ -77,17 +77,40 @@ public static class ResourceLoader
                 case EntryKind.Voice:
                 {
                     AudioInfo pcm = node.Audio ?? VirtualFileSystem.AmbientPcm;
-                    if (node.Kind == EntryKind.Voice)
-                        pcm = new AudioInfo { SampleRate = settings.VoiceSampleRate, Channels = pcm.Channels, BitsPerSample = pcm.BitsPerSample };
+                    if (node.Kind == EntryKind.Voice && pcm.Format == AudioFormat.RawPcm)
+                        pcm = new AudioInfo { Format = AudioFormat.RawPcm, SampleRate = settings.VoiceSampleRate, Channels = pcm.Channels, BitsPerSample = pcm.BitsPerSample };
 
-                    string path = tempFiles.CreateTempFile(".wav");
-                    using (Stream src = vfs.OpenFile(node))
-                    using (FileStream dst = File.Create(path))
+                    if (pcm.Format == AudioFormat.Mp3)
                     {
-                        dst.Write(WavWriter.Header((int)Math.Min(node.Size, int.MaxValue), pcm.SampleRate, pcm.Channels, pcm.BitsPerSample));
-                        src.CopyTo(dst);
+                        string path = tempFiles.CreateTempFile(".mp3");
+                        using (Stream src = vfs.OpenFile(node))
+                        using (FileStream dst = File.Create(path))
+                        {
+                            src.CopyTo(dst);
+                        }
+                        return new SoundResource(path, pcm, pcm.DurationSeconds(node.Size));
                     }
-                    return new SoundResource(path, pcm, pcm.DurationSeconds(node.Size));
+                    else if (pcm.Format == AudioFormat.Wav)
+                    {
+                        string path = tempFiles.CreateTempFile(".wav");
+                        using (Stream src = vfs.OpenFile(node))
+                        using (FileStream dst = File.Create(path))
+                        {
+                            src.CopyTo(dst);
+                        }
+                        return new SoundResource(path, pcm, pcm.DurationSeconds(node.Size));
+                    }
+                    else
+                    {
+                        string path = tempFiles.CreateTempFile(".wav");
+                        using (Stream src = vfs.OpenFile(node))
+                        using (FileStream dst = File.Create(path))
+                        {
+                            dst.Write(WavWriter.Header((int)Math.Min(node.Size, int.MaxValue), pcm.SampleRate, pcm.Channels, pcm.BitsPerSample));
+                            src.CopyTo(dst);
+                        }
+                        return new SoundResource(path, pcm, pcm.DurationSeconds(node.Size));
+                    }
                 }
 
                 case EntryKind.Video:

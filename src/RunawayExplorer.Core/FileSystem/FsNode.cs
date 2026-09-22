@@ -86,18 +86,36 @@ public sealed class ImageInfo
     public bool IsMask { get; init; }
 }
 
-/// <summary>PCM shape of an audio entry, decided by which archive it came from.</summary>
+public enum AudioFormat
+{
+    RawPcm,
+    Wav,
+    Mp3,
+}
+
+/// <summary>Format and playback attributes of an audio entry.</summary>
 public sealed class AudioInfo
 {
+    public AudioFormat Format { get; init; } = AudioFormat.RawPcm;
     public int SampleRate { get; init; }
     public int Channels { get; init; }
     public int BitsPerSample { get; init; }
 
-    public double DurationSeconds(long byteCount) =>
-        SampleRate <= 0 || Channels <= 0 || BitsPerSample <= 0
+    public double DurationSeconds(long byteCount)
+    {
+        if (Format == AudioFormat.Mp3)
+        {
+            // Typical MP3 voice lines and music: approximate based on 128 kbps (16,000 B/s)
+            return byteCount > 0 ? byteCount / 16_000.0 : 0;
+        }
+
+        long audioBytes = Format == AudioFormat.Wav ? Math.Max(0, byteCount - 44) : byteCount;
+        return SampleRate <= 0 || Channels <= 0 || BitsPerSample <= 0
             ? 0
-            : byteCount / (double)(SampleRate * Channels * (BitsPerSample / 8));
+            : audioBytes / (double)(SampleRate * Channels * (BitsPerSample / 8));
+    }
 }
+
 
 /// <summary>
 /// A single node (directory or file) in the in-memory virtual file system tree built by

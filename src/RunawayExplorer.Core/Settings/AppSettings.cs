@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using RunawayExplorer.Core.FileSystem;
 
 namespace RunawayExplorer.Core.Settings;
 
@@ -10,8 +12,40 @@ public sealed class AppSettings
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = true };
 
-    /// <summary>The last-used game installation folder, if any.</summary>
-    public string? BaseDir { get; set; }
+    /// <summary>The installation folder for Runaway: A Road Adventure.</summary>
+    public string? Runaway1Dir { get; set; }
+
+    /// <summary>The installation folder for Runaway: The Dream of the Turtle.</summary>
+    public string? Runaway2Dir { get; set; }
+
+    /// <summary>The currently active game.</summary>
+    public GameVersion ActiveGame { get; set; } = GameVersion.Runaway1;
+
+    /// <summary>Gets the configured install directory for the specified game version.</summary>
+    public string? GetGameDir(GameVersion game) => game switch
+    {
+        GameVersion.Runaway2 => Runaway2Dir,
+        _ => Runaway1Dir,
+    };
+
+    /// <summary>Sets the install directory for the specified game version.</summary>
+    public void SetGameDir(GameVersion game, string? path)
+    {
+        if (game == GameVersion.Runaway2)
+            Runaway2Dir = path;
+        else
+            Runaway1Dir = path;
+    }
+
+    /// <summary>The installation directory for the currently active game.</summary>
+    public string? ActiveGameDir => GetGameDir(ActiveGame);
+
+    /// <summary>The last-used game installation folder, for backward compatibility.</summary>
+    public string? BaseDir
+    {
+        get => ActiveGameDir;
+        set => SetGameDir(ActiveGame, value);
+    }
 
     /// <summary>Play sound entries as soon as they are selected.</summary>
     public bool AutoPlaySound { get; set; } = true;
@@ -130,7 +164,25 @@ public sealed class AppSettings
                 return new AppSettings();
 
             var settings = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path), SerializerOptions);
-            return settings ?? new AppSettings();
+            if (settings is not null)
+            {
+                if (string.IsNullOrWhiteSpace(settings.Runaway1Dir) && string.IsNullOrWhiteSpace(settings.Runaway2Dir))
+                {
+                    foreach (string candidate in settings.RecentInstalls)
+                    {
+                        if (Directory.Exists(candidate))
+                        {
+                            GameVersion v = GameDetector.Detect(candidate);
+                            if (v == GameVersion.Runaway2 && string.IsNullOrWhiteSpace(settings.Runaway2Dir))
+                                settings.Runaway2Dir = candidate;
+                            else if (v == GameVersion.Runaway1 && string.IsNullOrWhiteSpace(settings.Runaway1Dir))
+                                settings.Runaway1Dir = candidate;
+                        }
+                    }
+                }
+                return settings;
+            }
+            return new AppSettings();
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {

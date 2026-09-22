@@ -82,12 +82,13 @@
     <DockPanel>
         <Menu DockPanel.Dock="Top">
             <MenuItem Header="{DynamicResource Menu_File}">
-                <MenuItem Header="{DynamicResource Menu_SelectFolder}" Click="SelectFolder_Click" InputGesture="Ctrl+O"/>
-                <MenuItem x:Name="RecentInstallsMenu" Header="{DynamicResource Menu_OpenRecent}"/>
                 <MenuItem Header="{DynamicResource Menu_Export}" Click="Export_Click" InputGesture="Ctrl+E"/>
                 <MenuItem Header="{DynamicResource Menu_ExportRaw}" Click="ExportRaw_Click"/>
                 <MenuItem Header="{DynamicResource Menu_BatchExport}" Click="BatchExport_Click"
                           ToolTip.Tip="{DynamicResource ToolTip_BatchExportMenu}"/>
+                <Separator/>
+                <MenuItem Header="{DynamicResource Menu_Settings}" Click="OpenSettings_Click" InputGesture="Ctrl+OemComma"/>
+                <MenuItem x:Name="RecentInstallsMenu" Header="{DynamicResource Menu_OpenRecent}"/>
                 <Separator/>
                 <MenuItem Header="{DynamicResource Menu_Exit}" Click="Exit_Click"/>
             </MenuItem>
@@ -156,6 +157,11 @@
 
             <DockPanel Grid.Column="0" Margin="8,4,4,0">
                 <StackPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+                    <ComboBox x:Name="GameSelectorCombo" Margin="0,0,0,4" HorizontalAlignment="Stretch"
+                              SelectionChanged="GameSelector_SelectionChanged">
+                        <ComboBoxItem Content="Runaway: A Road Adventure"/>
+                        <ComboBoxItem Content="Runaway: The Dream of the Turtle"/>
+                    </ComboBox>
                     <ComboBox x:Name="TypeFilterCombo" Margin="0,0,0,4" HorizontalAlignment="Stretch"
                               SelectionChanged="TreeFilter_Changed">
                         <ComboBox.ItemTemplate>

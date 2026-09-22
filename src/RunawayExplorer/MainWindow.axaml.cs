@@ -48,6 +48,7 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _batchExportCts;
     private VirtualFileSystem? _vfs;
     private FsNode? _selectedNode;
+    private bool _initializingGameSelector;
     private ResourceContent? _currentContent;
 
     // Incremented on every new selection; async loads compare their captured value against this and
@@ -221,7 +222,7 @@ public partial class MainWindow : Window
 
         if (ctrl && e.Key == Key.O)
         {
-            SelectFolder_Click(this, new RoutedEventArgs());
+            OpenSettings_Click(this, new RoutedEventArgs());
             e.Handled = true;
         }
         else if (ctrl && e.Key == Key.F)
@@ -417,10 +418,12 @@ public partial class MainWindow : Window
 
         WarmUpMediaEngine();
 
-        if (!string.IsNullOrWhiteSpace(_settings.BaseDir))
-            await InitVfsAsync(_settings.BaseDir);
-        else
-            SetStatus("No Runaway install selected. Use File -> Select Runaway Install Folder... (or drop the folder here)");
+        _initializingGameSelector = true;
+        GameSelectorCombo.SelectedIndex = _settings.ActiveGame == GameVersion.Runaway2 ? 1 : 0;
+        _initializingGameSelector = false;
+
+        RefreshRecentInstallsMenu();
+        await ReloadActiveGameAsync();
 
         // Last, so a slow network call can never delay the tree appearing.
         await RunStartupUpdateCheckAsync();
@@ -454,11 +457,52 @@ public partial class MainWindow : Window
     // Install loading
     // ---------------------------------------------------------------------------------------------
 
+    public async Task ReloadActiveGameAsync()
+    {
+        string? dir = _settings.ActiveGameDir;
+        if (!string.IsNullOrWhiteSpace(dir) && Directory.Exists(dir))
+        {
+            await InitVfsAsync(dir);
+        }
+        else
+        {
+            UnloadCurrentGame();
+        }
+    }
+
+    private void UnloadCurrentGame()
+    {
+        _vfs = null;
+        Tree.ItemsSource = null;
+        ClearContentPanels();
+        string gameName = _settings.ActiveGame == GameVersion.Runaway2
+            ? "Runaway: The Dream of the Turtle"
+            : "Runaway: A Road Adventure";
+        SetStatus($"No installation folder configured for {gameName}. Open Settings (Options -> Settings) to set the installation folder.");
+    }
+
+    private async void GameSelector_SelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_initializingGameSelector) return;
+        var newGame = GameSelectorCombo.SelectedIndex == 1 ? GameVersion.Runaway2 : GameVersion.Runaway1;
+        if (_settings.ActiveGame == newGame && _vfs is not null) return;
+        _settings.ActiveGame = newGame;
+        _settings.Save();
+        await ReloadActiveGameAsync();
+    }
+
     private async Task OpenInstallAsync(string folder)
     {
-        _settings.BaseDir = folder;
+        GameVersion detected = GameDetector.Detect(folder);
+        _settings.SetGameDir(detected, folder);
+        _settings.ActiveGame = detected;
         _settings.RegisterRecentInstall(folder);
         _settings.Save();
+
+        _initializingGameSelector = true;
+        GameSelectorCombo.SelectedIndex = detected == GameVersion.Runaway2 ? 1 : 0;
+        _initializingGameSelector = false;
+
         await InitVfsAsync(folder);
         RefreshRecentInstallsMenu();
     }
@@ -683,12 +727,9 @@ public partial class MainWindow : Window
     // Menu: File
     // ---------------------------------------------------------------------------------------------
 
-    private async void SelectFolder_Click(object? sender, RoutedEventArgs e)
+    private void SelectFolder_Click(object? sender, RoutedEventArgs e)
     {
-        string? folder = await Dialogs.ShowOpenFolderDialog(this, "Select the Runaway install folder (the one containing Runaway.exe)");
-        if (folder is null)
-            return;
-        await OpenInstallAsync(folder);
+        OpenSettings_Click(sender, e);
     }
 
     private async void Export_Click(object? sender, RoutedEventArgs e)
@@ -728,8 +769,12 @@ public partial class MainWindow : Window
                 break;
 
             case SoundResource sound:
-                await ExportExtractedFileAsync(sound.TempFilePath, stem + ".wav", "WAV audio");
+            {
+                string ext = Path.GetExtension(sound.TempFilePath);
+                string filterDesc = ext.Equals(".mp3", StringComparison.OrdinalIgnoreCase) ? "MP3 audio" : "WAV audio";
+                await ExportExtractedFileAsync(sound.TempFilePath, stem + ext, filterDesc);
                 break;
+            }
 
             case VideoResource video:
                 await ExportExtractedFileAsync(video.TempFilePath, stem + ".bik", "Bink video");
@@ -1659,7 +1704,12 @@ public partial class MainWindow : Window
             ImageResource i => $"{i.Kind}, {i.Image.Width}×{i.Image.Height}",
             AnimationResource a => $"animation, {a.Asset.FrameCount} frames, bounding box {a.Asset.Bounds.Width}×{a.Asset.Bounds.Height} at screen {a.Asset.Bounds.X},{a.Asset.Bounds.Y}" +
                                    (a.Asset.DescriptorCount > 0 ? $", {a.Asset.DescriptorCount} descriptor record(s) skipped" : ""),
-            SoundResource s => $"{s.Pcm.SampleRate:N0} Hz, {s.Pcm.Channels}ch, {s.Pcm.BitsPerSample}-bit PCM, {VirtualFileSystem.FormatDuration(s.DurationSeconds)}",
+            SoundResource s => s.Pcm.Format switch
+            {
+                AudioFormat.Mp3 => $"MP3 audio, {VirtualFileSystem.FormatDuration(s.DurationSeconds)}",
+                AudioFormat.Wav => $"{s.Pcm.SampleRate:N0} Hz, {s.Pcm.Channels}ch, {s.Pcm.BitsPerSample}-bit WAV, {VirtualFileSystem.FormatDuration(s.DurationSeconds)}",
+                _ => $"{s.Pcm.SampleRate:N0} Hz, {s.Pcm.Channels}ch, {s.Pcm.BitsPerSample}-bit PCM, {VirtualFileSystem.FormatDuration(s.DurationSeconds)}",
+            },
             VideoResource => "Bink video, header restored",
             TextResource t => $"{t.Text.Length:N0} chars",
             ErrorResource => "load failed",
@@ -2293,8 +2343,14 @@ public partial class MainWindow : Window
 
     private void ShowSound(SoundResource sound)
     {
-        SoundInfoText.Text = $"{_selectedNode?.DisplayName}\n{sound.Pcm.SampleRate:N0} Hz, {(sound.Pcm.Channels == 1 ? "mono" : "stereo")}, {sound.Pcm.BitsPerSample}-bit PCM" +
-                             (_selectedNode?.Kind == EntryKind.Voice ? $"  (rate assumed; change it in Settings > Playback)" : "");
+        string formatDesc = sound.Pcm.Format switch
+        {
+            AudioFormat.Mp3 => "MP3 audio",
+            AudioFormat.Wav => $"{sound.Pcm.SampleRate:N0} Hz, {(sound.Pcm.Channels == 1 ? "mono" : "stereo")}, {sound.Pcm.BitsPerSample}-bit WAV",
+            _ => $"{sound.Pcm.SampleRate:N0} Hz, {(sound.Pcm.Channels == 1 ? "mono" : "stereo")}, {sound.Pcm.BitsPerSample}-bit PCM",
+        };
+        SoundInfoText.Text = $"{_selectedNode?.DisplayName}\n{formatDesc}" +
+                             (_selectedNode?.Kind == EntryKind.Voice && sound.Pcm.Format == AudioFormat.RawPcm ? $"  (rate assumed; change it in Settings > Playback)" : "");
         SoundSlider.Value = 0;
         SoundCurrentTimeText.Text = "0:00";
         SoundTotalTimeText.Text = VirtualFileSystem.FormatDuration(sound.DurationSeconds);

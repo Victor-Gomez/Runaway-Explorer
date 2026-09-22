@@ -25,8 +25,23 @@ public static class SceneCatalog
         new(6, "The Indian, the Nun and the Finger", "El indio, la monja y el dedo"),
     ];
 
+    public static readonly IReadOnlyList<ChapterInfo> ChaptersR1 = Chapters;
+
+    public static readonly IReadOnlyList<ChapterInfo> ChaptersR2 =
+    [
+        new(1, "Mala Island", "La isla de Mala"),
+        new(2, "Surfin' Mala", "Surfeando en Mala"),
+        new(3, "Simpler than an Amoeba", "Más simple que una ameba"),
+        new(4, "The Guy Who Can Speak to Platypuses", "El hombre que habla con los ornitorrincos"),
+        new(5, "Allerton Court", "Allerton Court"),
+        new(6, "The Hidden Temple", "El templo oculto"),
+    ];
+
     private static readonly Dictionary<int, ChapterInfo> ChaptersByNumber =
         Chapters.ToDictionary(c => c.Number);
+
+    private static readonly Dictionary<int, ChapterInfo> ChaptersByNumberR2 =
+        ChaptersR2.ToDictionary(c => c.Number);
 
     private static readonly Dictionary<string, SceneInfo> ScenesByName =
         new(StringComparer.OrdinalIgnoreCase)
@@ -136,6 +151,105 @@ public static class SceneCatalog
             ["RESOURCE.I03"] = new("RESOURCE.I03", 0, "Outro: End Credits & Epilogue", "Créditos finales y epílogo"),
         };
 
+    private static readonly Dictionary<string, SceneInfo> ScenesByNameR2 =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            // Intro & Prologue
+            ["RESOURCE.001"] = new("RESOURCE.001", 1, "Intro: Airplane Interior", "Intro: Interior del avión"),
+            ["RESOURCE.I01"] = new("RESOURCE.I01", 0, "Cutscene: Brian & Gina Flight", "Cinemática: Vuelo de Brian y Gina"),
+            ["RESOURCE.I02"] = new("RESOURCE.I02", 0, "Cutscene: Cockpit Emergency", "Cinemática: Emergencia en cabina"),
+
+            // Chapter 1: Mala Island / La isla de Mala
+            ["RESOURCE.A05"] = new("RESOURCE.A05", 1, "Jungle: Crashed Plane & Lake", "Selva: Avión estrellado y lago"),
+            ["RESOURCE.A08"] = new("RESOURCE.A08", 1, "Jungle: Lemur Path", "Selva: Sendero de los lémures"),
+            ["RESOURCE.A09"] = new("RESOURCE.A09", 1, "Jungle: Quicksand", "Selva: Arenas movedizas"),
+            ["RESOURCE.A10"] = new("RESOURCE.A10", 1, "Jungle: Monkey Tree", "Selva: Árbol del mono"),
+            ["RESOURCE.A11"] = new("RESOURCE.A11", 1, "Jungle: Rope Bridge & Gorge", "Selva: Puente colgante y desfiladero"),
+
+            // Chapter 2: Surfin' Mala / Surfeando en Mala
+            ["RESOURCE.B01"] = new("RESOURCE.B01", 2, "Beach: Luana's Surf Shack & Bar", "Playa: Caseta de surf de Luana y bar"),
+            ["RESOURCE.B03"] = new("RESOURCE.B03", 2, "Beach: Tiki Hut & Pier", "Playa: Cabaña tiki y muelle"),
+            ["RESOURCE.B04"] = new("RESOURCE.B04", 2, "Military Camp: Guard Post & Exterior", "Campamento militar: Puesto de guardia y exterior"),
+            ["RESOURCE.B04A"] = new("RESOURCE.B04A", 2, "Military Camp: Guard Post (Night)", "Campamento militar: Puesto de guardia (Noche)"),
+            ["RESOURCE.B05"] = new("RESOURCE.B05", 2, "Military Camp: Colonel's Office", "Campamento militar: Despacho del coronel"),
+            ["RESOURCE.B06"] = new("RESOURCE.B06", 2, "Military Camp: Detention Center", "Campamento militar: Centro de detención"),
+            ["RESOURCE.B07"] = new("RESOURCE.B07", 2, "Military Camp: Communications Center", "Campamento militar: Centro de comunicaciones"),
+            ["RESOURCE.B08"] = new("RESOURCE.B08", 2, "Military Camp: Vehicle Depot", "Campamento militar: Parque de vehículos"),
+            ["RESOURCE.B09"] = new("RESOURCE.B09", 2, "Military Camp: Airstrip & Hangars", "Campamento militar: Pista y hangares"),
+            ["RESOURCE.B20"] = new("RESOURCE.B20", 2, "Beach: Sunset Overlook", "Playa: Mirador al atardecer"),
+
+            // Chapter 3: Simpler than an Amoeba / Más simple que una ameba
+            ["RESOURCE.C01"] = new("RESOURCE.C01", 3, "Yacht: Deck & Ocean", "Yate: Cubierta y océano"),
+            ["RESOURCE.C02"] = new("RESOURCE.C02", 3, "Yacht: Bridge & Controls", "Yate: Puente de mando"),
+            ["RESOURCE.C03"] = new("RESOURCE.C03", 3, "Yacht: Engine Room", "Yate: Sala de máquinas"),
+            ["RESOURCE.C04"] = new("RESOURCE.C04", 3, "Yacht: Rosa's Cabin", "Yate: Camarote de Rosa"),
+            ["RESOURCE.C05"] = new("RESOURCE.C05", 3, "Underwater: Sunken Galleon", "Bajo el agua: Galeón hundido"),
+            ["RESOURCE.C05B"] = new("RESOURCE.C05B", 3, "Underwater: Galleon Hold", "Bajo el agua: Bodega del galeón"),
+            ["RESOURCE.C05C"] = new("RESOURCE.C05C", 3, "Underwater: Coral Reef", "Bajo el agua: Arrecife de coral"),
+            ["RESOURCE.C09"] = new("RESOURCE.C09", 3, "Ocean: Sea Floor & Cave", "Océano: Fondo marino y cueva"),
+            ["RESOURCE.C10"] = new("RESOURCE.C10", 3, "Yacht: Cargo Hold", "Yate: Bodega de carga"),
+            ["RESOURCE.C11"] = new("RESOURCE.C11", 3, "Underwater: Sea Trench", "Bajo el agua: Fosa marina"),
+            ["RESOURCE.C12"] = new("RESOURCE.C12", 3, "Yacht: Galley", "Yate: Cocina"),
+            ["RESOURCE.C13"] = new("RESOURCE.C13", 3, "Underwater: Submarine Dock", "Bajo el agua: Muelle de submarinos"),
+            ["RESOURCE.C14"] = new("RESOURCE.C14", 3, "Underwater: Deep Cavern", "Bajo el agua: Caverna profunda"),
+            ["RESOURCE.C15"] = new("RESOURCE.C15", 3, "Underwater: Submarine Interior", "Bajo el agua: Interior del submarino"),
+            ["RESOURCE.C16"] = new("RESOURCE.C16", 3, "Underwater: Submarine Airlock", "Bajo el agua: Esclusa del submarino"),
+            ["RESOURCE.C17"] = new("RESOURCE.C17", 3, "Underwater: Sunken Ruins", "Bajo el agua: Ruinas sumergidas"),
+            ["RESOURCE.C18"] = new("RESOURCE.C18", 3, "Underwater: Deep Trench Overlook", "Bajo el agua: Mirador de la fosa"),
+            ["RESOURCE.C19"] = new("RESOURCE.C19", 3, "Underwater: Hidden Alcove", "Bajo el agua: Nicho oculto"),
+            ["RESOURCE.C20"] = new("RESOURCE.C20", 3, "Underwater: Ancient Altar", "Bajo el agua: Altar ancestral"),
+            ["RESOURCE.C21"] = new("RESOURCE.C21", 3, "Underwater: Escape Hatch", "Bajo el agua: Escotilla de escape"),
+
+            // Chapter 4: The Guy Who Can Speak to Platypuses / El hombre que habla con los ornitorrincos
+            ["RESOURCE.D06"] = new("RESOURCE.D06", 4, "Sanctuary: Platypus Lagoon", "Santuario: Laguna de los ornitorrincos"),
+            ["RESOURCE.D08"] = new("RESOURCE.D08", 4, "Sanctuary: Joshua's Machine", "Santuario: La máquina de Joshua"),
+            ["RESOURCE.D09"] = new("RESOURCE.D09", 4, "Sanctuary: Cliff Path", "Santuario: Sendero del acantilado"),
+            ["RESOURCE.D10"] = new("RESOURCE.D10", 4, "Sanctuary: Archibald's Hut", "Santuario: Choza de Archibald"),
+            ["RESOURCE.D11"] = new("RESOURCE.D11", 4, "Sanctuary: Lookout Point", "Santuario: Mirador"),
+            ["RESOURCE.D12"] = new("RESOURCE.D12", 4, "Sanctuary: Rope Bridge", "Santuario: Puente de cuerda"),
+            ["RESOURCE.D13"] = new("RESOURCE.D13", 4, "Sanctuary: Platypus Nest", "Santuario: Nido de ornitorrinco"),
+            ["RESOURCE.D14"] = new("RESOURCE.D14", 4, "Sanctuary: Mountain Trail", "Santuario: Camino de montaña"),
+            ["RESOURCE.D15"] = new("RESOURCE.D15", 4, "Sanctuary: Cave Entrance", "Santuario: Entrada de la cueva"),
+            ["RESOURCE.D16"] = new("RESOURCE.D16", 4, "Sanctuary: Abandoned Campsite", "Santuario: Campamento abandonado"),
+            ["RESOURCE.D17"] = new("RESOURCE.D17", 4, "Sanctuary: Waterfall & Stream", "Santuario: Cascada y arroyo"),
+
+            // Chapter 5: Allerton Court / Allerton Court
+            ["RESOURCE.E01"] = new("RESOURCE.E01", 5, "Allerton Court: Grand Foyer", "Allerton Court: Gran vestíbulo"),
+            ["RESOURCE.E02"] = new("RESOURCE.E02", 5, "Allerton Court: Library", "Allerton Court: Biblioteca"),
+            ["RESOURCE.E03"] = new("RESOURCE.E03", 5, "Allerton Court: Dining Room", "Allerton Court: Comedor"),
+            ["RESOURCE.E04"] = new("RESOURCE.E04", 5, "Allerton Court: Study & Desk", "Allerton Court: Estudio y escritorio"),
+            ["RESOURCE.E05"] = new("RESOURCE.E05", 5, "Allerton Court: Cellar & Crypt", "Allerton Court: Sótano y cripta"),
+            ["RESOURCE.E07"] = new("RESOURCE.E07", 5, "Allerton Court: Conservatory", "Allerton Court: Invernadero"),
+            ["RESOURCE.E08"] = new("RESOURCE.E08", 5, "Allerton Court: Upstairs Gallery", "Allerton Court: Galería superior"),
+            ["RESOURCE.E10"] = new("RESOURCE.E10", 5, "Allerton Court: Hidden Vault", "Allerton Court: Cámara acorazada oculta"),
+            ["RESOURCE.E11"] = new("RESOURCE.E11", 5, "Allerton Court: Secret Laboratory", "Allerton Court: Laboratorio secreto"),
+
+            // Chapter 6: The Hidden Temple / El templo oculto
+            ["RESOURCE.G01"] = new("RESOURCE.G01", 6, "Temple: Outer Courtyard", "Templo: Patio exterior"),
+            ["RESOURCE.G02"] = new("RESOURCE.G02", 6, "Temple: Carved Antechamber", "Templo: Antecámara tallada"),
+            ["RESOURCE.G03"] = new("RESOURCE.G03", 6, "Temple: Great Pyramid Hall", "Templo: Sala de la gran pirámide"),
+            ["RESOURCE.G03B"] = new("RESOURCE.G03B", 6, "Temple: Pyramid Hall (Altar Lit)", "Templo: Sala de la pirámide (Altar encendido)"),
+            ["RESOURCE.G04"] = new("RESOURCE.G04", 6, "Temple: Alien Portal", "Templo: Portal alienígena"),
+            ["RESOURCE.G05"] = new("RESOURCE.G05", 6, "Temple: Celestial Observatory", "Templo: Observatorio celeste"),
+            ["RESOURCE.G06"] = new("RESOURCE.G06", 6, "Temple: Crystal Chamber", "Templo: Cámara de cristal"),
+            ["RESOURCE.G07"] = new("RESOURCE.G07", 6, "Temple: Power Conduits", "Templo: Conductos de energía"),
+            ["RESOURCE.G08"] = new("RESOURCE.G08", 6, "Temple: Ancient Mechanism", "Templo: Mecanismo ancestral"),
+            ["RESOURCE.G10"] = new("RESOURCE.G10", 6, "Spaceship: Command Bridge", "Nave espacial: Puente de mando"),
+            ["RESOURCE.G11"] = new("RESOURCE.G11", 6, "Spaceship: Stasis Bay", "Nave espacial: Bahía de éxtasis"),
+            ["RESOURCE.G12"] = new("RESOURCE.G12", 6, "Spaceship: Engine Core", "Nave espacial: Núcleo del motor"),
+            ["RESOURCE.G13"] = new("RESOURCE.G13", 6, "Spaceship: Observation Deck", "Nave espacial: Cubierta de observación"),
+
+            // Epilogue & Localized Overlays
+            ["RESOURCE.H02"] = new("RESOURCE.H02", 6, "Epilogue: Island Shore", "Epílogo: Costa de la isla"),
+            ["RESOURCE.H04"] = new("RESOURCE.H04", 6, "Epilogue: Finale Scene", "Epílogo: Escena final"),
+            ["RESOURCE.H06"] = new("RESOURCE.H06", 6, "Epilogue: Credits Sequence", "Epílogo: Créditos"),
+            ["RESOURCE.SP1"] = new("RESOURCE.SP1", 1, "Spanish Overlay: Chapter 1", "Textos español: Capítulo 1"),
+            ["RESOURCE.SP2"] = new("RESOURCE.SP2", 2, "Spanish Overlay: Chapter 2", "Textos español: Capítulo 2"),
+            ["RESOURCE.SP3"] = new("RESOURCE.SP3", 3, "Spanish Overlay: Chapter 3", "Textos español: Capítulo 3"),
+            ["RESOURCE.SP4"] = new("RESOURCE.SP4", 4, "Spanish Overlay: Chapter 4", "Textos español: Capítulo 4"),
+            ["RESOURCE.SP5"] = new("RESOURCE.SP5", 5, "Spanish Overlay: Chapter 5", "Textos español: Capítulo 5"),
+        };
+
     private static readonly Dictionary<string, (string En, string Es)> AudioNames =
         new(StringComparer.OrdinalIgnoreCase)
         {
@@ -158,6 +272,24 @@ public static class SceneCatalog
             ["RESOURCE.S10"] = ("Misc Sound Effects", "Efectos de sonido varios"),
         };
 
+    private static readonly Dictionary<string, (string En, string Es)> AudioNamesR2 =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["RESOURCE.M01"] = ("Mala Island Theme", "Tema de la isla de Mala"),
+            ["RESOURCE.M02"] = ("Surfin' Mala Theme", "Tema de Surfeando en Mala"),
+            ["RESOURCE.M03"] = ("Under the Sea & Galleon Theme", "Bajo el mar y el galeón"),
+            ["RESOURCE.M04"] = ("Platypus Bay Theme", "Bahía de los ornitorrincos"),
+            ["RESOURCE.M05"] = ("Allerton Court Manor Theme", "Mansión Allerton Court"),
+            ["RESOURCE.M06"] = ("The Hidden Temple & Finale Theme", "El templo oculto y tema final"),
+            ["RESOURCE.S00"] = ("Jungle & Nature Ambience", "Ambiente de selva y naturaleza"),
+            ["RESOURCE.S01"] = ("Camp & Military Ambience", "Ambiente militar y campamento"),
+            ["RESOURCE.S02"] = ("Underwater & Ocean Ambience", "Ambiente oceánico y submarino"),
+            ["RESOURCE.S03"] = ("Sanctuary & Island Ambience", "Ambiente del santuario y la isla"),
+            ["RESOURCE.S04"] = ("Manor & Indoors Ambience", "Ambiente de la mansión e interiores"),
+            ["RESOURCE.S05"] = ("Ancient Temple Ambience", "Ambiente del templo ancestral"),
+            ["RESOURCE.S06"] = ("Sound Effects", "Efectos de sonido"),
+        };
+
     private static readonly Dictionary<string, (string En, string Es)> CategoryNames =
         new(StringComparer.OrdinalIgnoreCase)
         {
@@ -176,19 +308,22 @@ public static class SceneCatalog
         (language is null && CultureInfo.CurrentUICulture.TwoLetterISOLanguageName.Equals("es", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>Returns the official chapter information if known.</summary>
-    public static ChapterInfo? GetChapter(int chapterNumber) =>
-        ChaptersByNumber.GetValueOrDefault(chapterNumber);
+    public static ChapterInfo? GetChapter(int chapterNumber, GameVersion game = GameVersion.Runaway1) =>
+        (game == GameVersion.Runaway2 ? ChaptersByNumberR2 : ChaptersByNumber).GetValueOrDefault(chapterNumber);
 
     /// <summary>Returns friendly scene title with readable name first and internal name after (e.g. "Ch. 1 (\"Wake Up, Brian!\"): Hospital: Gina's Room (RESOURCE.A01)").</summary>
-    public static string GetSceneTitle(string archiveName, string? language = null)
+    public static string GetSceneTitle(string archiveName, string? language = null, GameVersion game = GameVersion.Runaway1)
     {
         string baseName = Path.GetFileName(archiveName);
         bool es = IsSpanish(language);
 
-        if (ScenesByName.TryGetValue(baseName, out SceneInfo? info))
+        var scenes = game == GameVersion.Runaway2 ? ScenesByNameR2 : ScenesByName;
+        var chapters = game == GameVersion.Runaway2 ? ChaptersByNumberR2 : ChaptersByNumber;
+
+        if (scenes.TryGetValue(baseName, out SceneInfo? info))
         {
             string loc = es ? info.NameEs : info.NameEn;
-            if (info.Chapter > 0 && ChaptersByNumber.TryGetValue(info.Chapter, out ChapterInfo? ch))
+            if (info.Chapter > 0 && chapters.TryGetValue(info.Chapter, out ChapterInfo? ch))
             {
                 string chTitle = es ? ch.TitleEs : ch.TitleEn;
                 return $"Ch. {info.Chapter} (\"{chTitle}\"): {loc} ({baseName})";
@@ -200,12 +335,14 @@ public static class SceneCatalog
     }
 
     /// <summary>Returns friendly title for an audio archive with readable name first (e.g. "Main Theme & Title (RESOURCE.M01)").</summary>
-    public static string GetAudioTitle(string archiveName, string? language = null)
+    public static string GetAudioTitle(string archiveName, string? language = null, GameVersion game = GameVersion.Runaway1)
     {
         string baseName = Path.GetFileName(archiveName);
         bool es = IsSpanish(language);
 
-        if (AudioNames.TryGetValue(baseName, out var pair))
+        var audio = game == GameVersion.Runaway2 ? AudioNamesR2 : AudioNames;
+
+        if (audio.TryGetValue(baseName, out var pair))
         {
             string title = es ? pair.Es : pair.En;
             return $"{title} ({baseName})";
