@@ -2,6 +2,19 @@ using System.Buffers.Binary;
 
 namespace RunawayExplorer.Core.Formats;
 
+/// <summary>Supported sprite animation format variants across the Runaway series.</summary>
+public enum SpriteFormat
+{
+    /// <summary>Runaway 1: 5-byte segment headers, RGB565 only, frame offsets relative to header end.</summary>
+    Runaway1 = 1,
+
+    /// <summary>Runaway 2: 6-byte segment headers with alpha flag, paired archive entries.</summary>
+    Runaway2 = 2,
+
+    /// <summary>Runaway 3: 7-byte segment headers with 16-bit count and alpha flag, absolute table offsets.</summary>
+    Runaway3 = 3,
+}
+
 /// <summary>
 /// One 14-byte frame record. <paramref name="FrameOffset"/> is relative to the end of the record table;
 /// (<paramref name="X0"/>, <paramref name="W"/>, <paramref name="Y0"/>, <paramref name="Y1"/>) is this
@@ -19,9 +32,12 @@ public readonly record struct SpriteFrame(DecodedImage? Image, int X, int Y)
     public bool IsEmpty => Image is null;
 }
 
+/// <summary>Decoded segment header parameters for any sprite format.</summary>
+internal readonly record struct SpriteSegmentHeader(int X, int Y, int Count, bool HasAlpha, int HeaderBytes, int PixelBytes);
+
 /// <summary>
 /// Format 3 of the scene archives: an animated sprite.
-/// Supports both Runaway 1 single-entry format and Runaway 2 paired header/data format.
+/// Supports Runaway 1 single-entry format, Runaway 2 paired header/data format, and Runaway 3 7-byte segment format.
 /// </summary>
 public sealed class SpriteAsset
 {
@@ -29,13 +45,13 @@ public sealed class SpriteAsset
 
     private readonly byte[] _data;
 
-    private SpriteAsset(byte[] data, IReadOnlyList<SpriteRecord> records, int dataOffset, int descriptorCount, bool isRunaway2 = false)
+    private SpriteAsset(byte[] data, IReadOnlyList<SpriteRecord> records, int dataOffset, int descriptorCount, SpriteFormat format)
     {
         _data = data;
         Records = records;
         DataOffset = dataOffset;
         DescriptorCount = descriptorCount;
-        IsRunaway2 = isRunaway2;
+        Format = format;
 
         int bx = int.MaxValue, by = int.MaxValue, bx1 = 0, by1 = 0;
         foreach (SpriteRecord r in records)
@@ -58,14 +74,92 @@ public sealed class SpriteAsset
     /// <summary>Number of leading descriptor records skipped. Their purpose is unknown.</summary>
     public int DescriptorCount { get; }
 
+    /// <summary>The sprite format variant (Runaway 1, 2, or 3).</summary>
+    public SpriteFormat Format { get; }
+
     /// <summary>True if this sprite uses the Runaway 2 6-byte segment headers and optional alpha channel.</summary>
-    public bool IsRunaway2 { get; }
+    public bool IsRunaway2 => Format == SpriteFormat.Runaway2;
+
+    /// <summary>True if this sprite uses the Runaway 3 7-byte segment headers (16-bit count) and absolute table offsets.</summary>
+    public bool IsRunaway3 => Format == SpriteFormat.Runaway3;
 
     /// <summary>The union of every frame's box: the region of the screen the animation ever touches. The natural canvas for reassembly.</summary>
     public (int X, int Y, int Width, int Height) Bounds { get; }
 
     /// <summary>The raw asset bytes.</summary>
     public ReadOnlySpan<byte> Data => _data;
+
+    /// <summary>
+    /// Reads and validates a segment header at byte position <paramref name="p"/> according to <paramref name="format"/>.
+    /// </summary>
+    internal static bool TryReadSegmentHeader(
+        ReadOnlySpan<byte> data,
+        int p,
+        SpriteFormat format,
+        out SpriteSegmentHeader header)
+    {
+        header = default;
+        switch (format)
+        {
+            case SpriteFormat.Runaway3:
+            {
+                if (p + 7 > data.Length) return false;
+                int x = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(p));
+                int y = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(p + 2));
+                byte flag = data[p + 4];
+                int count = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(p + 5));
+                int bpp = flag == 0 ? 2 : (flag == 1 ? 3 : 0);
+                if (bpp == 0 || p + 7 + count * bpp > data.Length) return false;
+                header = new SpriteSegmentHeader(x, y, count, flag == 1, 7, count * bpp);
+                return true;
+            }
+            case SpriteFormat.Runaway2:
+            {
+                if (p + 6 > data.Length) return false;
+                int x = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(p));
+                int y = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(p + 2));
+                byte flag = data[p + 4];
+                byte count = data[p + 5];
+                int bpp = flag == 0 ? 2 : (flag == 1 ? 3 : 0);
+                if (bpp == 0 || p + 6 + count * bpp > data.Length) return false;
+                header = new SpriteSegmentHeader(x, y, count, flag == 1, 6, count * bpp);
+                return true;
+            }
+            case SpriteFormat.Runaway1:
+            {
+                if (p + 5 > data.Length) return false;
+                int x = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(p));
+                int y = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(p + 2));
+                int count = data[p + 4];
+                if (count == 0) count = 1;
+                if (p + 5 + 2 * count > data.Length) return false;
+                header = new SpriteSegmentHeader(x, y, count, false, 5, 2 * count);
+                return true;
+            }
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// Walks all segments for a frame starting at byte position <paramref name="startP"/>, returning the ending position.
+    /// </summary>
+    internal static bool TryWalkFrame(
+        ReadOnlySpan<byte> data,
+        int startP,
+        int segmentCount,
+        SpriteFormat format,
+        out int endP)
+    {
+        endP = startP;
+        for (int s = 0; s < segmentCount; s++)
+        {
+            if (!TryReadSegmentHeader(data, endP, format, out SpriteSegmentHeader h))
+                return false;
+            endP += h.HeaderBytes + h.PixelBytes;
+        }
+        return true;
+    }
 
     /// <summary>
     /// Parses <paramref name="data"/> as a sprite asset. <see langword="null"/> when it is not one.
@@ -75,7 +169,68 @@ public sealed class SpriteAsset
     {
         ArgumentNullException.ThrowIfNull(data);
 
-        // 1. Try parsing as Runaway 2 paired sprite
+        // 1. Try parsing as Runaway 3 paired sprite (fo0 == headerSize, 7-byte segments with u16 count)
+        if (data.Length >= 16)
+        {
+            ushort fc = BinaryPrimitives.ReadUInt16LittleEndian(data);
+            uint fo0 = BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(2));
+            int headerSize = 2 + fc * RecordSize;
+            if (fc > 0 && fc <= 2000 && fo0 == headerSize && data.Length >= headerSize)
+            {
+                var r3Records = new List<SpriteRecord>(fc);
+                bool validRecords = true;
+                long prevFo = -1;
+                for (int k = 0; k < fc; k++)
+                {
+                    int rp = 2 + k * RecordSize;
+                    long fo = BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(rp));
+                    int x0 = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(rp + 4));
+                    int x1 = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(rp + 6));
+                    int y0 = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(rp + 8));
+                    int y1 = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(rp + 10));
+                    int c = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(rp + 12));
+                    int w = x1 >= x0 ? x1 - x0 : 0;
+                    if (fo < prevFo || fo > data.Length || (x1 < x0 && c > 0) || y1 < y0 || y1 >= 8192 || x1 > 8192)
+                    {
+                        validRecords = false;
+                        break;
+                    }
+                    r3Records.Add(new SpriteRecord((int)(fo - headerSize), x0, w, y0, y1, c));
+                    prevFo = fo;
+                }
+
+                if (validRecords)
+                {
+                    // Find first frame with segments to verify walk
+                    int walkFrame = -1;
+                    for (int k = 0; k < r3Records.Count; k++)
+                    {
+                        if (r3Records[k].SegmentCount > 0)
+                        {
+                            walkFrame = k;
+                            break;
+                        }
+                    }
+
+                    if (walkFrame >= 0)
+                    {
+                        int startP = headerSize + r3Records[walkFrame].FrameOffset;
+                        int expectedEnd = walkFrame + 1 < r3Records.Count ? headerSize + r3Records[walkFrame + 1].FrameOffset : data.Length;
+                        if (TryWalkFrame(data, startP, r3Records[walkFrame].SegmentCount, SpriteFormat.Runaway3, out int endP) && endP == expectedEnd)
+                        {
+                            int r3Descriptors = walkFrame > 0 && r3Records[0].SegmentCount == 0 ? 1 : 0;
+                            return new SpriteAsset(data, r3Records, headerSize, r3Descriptors, SpriteFormat.Runaway3);
+                        }
+                    }
+                    else if (r3Records.Count > 0 && r3Records[0].SegmentCount == 0)
+                    {
+                        return new SpriteAsset(data, r3Records, headerSize, descriptorCount: 1, SpriteFormat.Runaway3);
+                    }
+                }
+            }
+        }
+
+        // 2. Try parsing as Runaway 2 paired sprite
         if (data.Length >= 16)
         {
             ushort fc = BinaryPrimitives.ReadUInt16LittleEndian(data);
@@ -108,29 +263,18 @@ public sealed class SpriteAsset
 
                     if (validRecords)
                     {
-                        // Verify frame 0 walk
-                        int p = headerSize;
-                        bool walkOk = true;
-                        for (int s = 0; s < r2Records[0].SegmentCount; s++)
+                        int startP = headerSize;
+                        int expectedEnd = r2Records.Count > 1 ? headerSize + r2Records[1].FrameOffset : data.Length;
+                        if (TryWalkFrame(data, startP, r2Records[0].SegmentCount, SpriteFormat.Runaway2, out int endP) && endP == expectedEnd)
                         {
-                            if (p + 6 > data.Length) { walkOk = false; break; }
-                            byte flag = data[p + 4];
-                            byte cnt = data[p + 5];
-                            int bpp = flag == 0 ? 2 : (flag == 1 ? 3 : 0);
-                            if (bpp == 0 || p + 6 + cnt * bpp > data.Length) { walkOk = false; break; }
-                            p += 6 + cnt * bpp;
-                        }
-                        int end0 = r2Records.Count > 1 ? headerSize + r2Records[1].FrameOffset : data.Length;
-                        if (walkOk && p == end0)
-                        {
-                            return new SpriteAsset(data, r2Records, headerSize, descriptorCount: 0, isRunaway2: true);
+                            return new SpriteAsset(data, r2Records, headerSize, descriptorCount: 0, SpriteFormat.Runaway2);
                         }
                     }
                 }
             }
         }
 
-        // 2. Try parsing as Runaway 1 single-entry sprite
+        // 3. Try parsing as Runaway 1 single-entry sprite
         if (data.Length < RecordSize || BinaryPrimitives.ReadUInt32LittleEndian(data) != 0)
             return null;
 
@@ -169,22 +313,12 @@ public sealed class SpriteAsset
             return null;
 
         int dataOffset = i;
-
-        // Frame 0 must walk cleanly to frame 1 (or to the end of the asset).
-        int pR1 = dataOffset;
-        for (int s = 0; s < records[0].SegmentCount; s++)
-        {
-            if (pR1 + 5 > data.Length)
-                return null;
-            int count = data[pR1 + 4];
-            if (count == 0) count = 1;
-            pR1 += 5 + 2 * count;
-        }
-        int end0R1 = records.Count > 1 ? dataOffset + records[1].FrameOffset : data.Length;
-        if (pR1 != end0R1)
+        int startPR1 = dataOffset;
+        int expectedEndR1 = records.Count > 1 ? dataOffset + records[1].FrameOffset : data.Length;
+        if (!TryWalkFrame(data, startPR1, records[0].SegmentCount, SpriteFormat.Runaway1, out int endPR1) || endPR1 != expectedEndR1)
             return null;
 
-        return new SpriteAsset(data, records, dataOffset, descriptors, isRunaway2: false);
+        return new SpriteAsset(data, records, dataOffset, descriptors, SpriteFormat.Runaway1);
     }
 
     /// <summary>The segments of frame <paramref name="index"/>. A truncated frame yields the segments that fit.</summary>
@@ -194,40 +328,13 @@ public sealed class SpriteAsset
         int p = DataOffset + rec.FrameOffset;
         var segs = new List<SpriteSegment>(rec.SegmentCount);
 
-        if (IsRunaway2)
-        {
-            for (int s = 0; s < rec.SegmentCount; s++)
-            {
-                if (p + 6 > _data.Length)
-                    break;
-                int x = BinaryPrimitives.ReadUInt16LittleEndian(_data.AsSpan(p));
-                int y = BinaryPrimitives.ReadUInt16LittleEndian(_data.AsSpan(p + 2));
-                byte flag = _data[p + 4];
-                byte count = _data[p + 5];
-                bool hasAlpha = flag == 1;
-                int bpp = flag == 0 ? 2 : (flag == 1 ? 3 : 2);
-                p += 6;
-                if (p + count * bpp > _data.Length)
-                    break;
-                segs.Add(new SpriteSegment(x, y, count, p, hasAlpha));
-                p += count * bpp;
-            }
-            return segs;
-        }
-
         for (int s = 0; s < rec.SegmentCount; s++)
         {
-            if (p + 5 > _data.Length)
+            if (!TryReadSegmentHeader(_data, p, Format, out SpriteSegmentHeader h))
                 break;
-            int x = BinaryPrimitives.ReadUInt16LittleEndian(_data.AsSpan(p));
-            int y = BinaryPrimitives.ReadUInt16LittleEndian(_data.AsSpan(p + 2));
-            int count = _data[p + 4];
-            if (count == 0) count = 1;
-            p += 5;
-            if (p + 2 * count > _data.Length)
-                break;
-            segs.Add(new SpriteSegment(x, y, count, p, HasAlpha: false));
-            p += 2 * count;
+            p += h.HeaderBytes;
+            segs.Add(new SpriteSegment(h.X, h.Y, h.Count, p, h.HasAlpha));
+            p += h.PixelBytes;
         }
         return segs;
     }
@@ -281,8 +388,8 @@ public sealed class SpriteAsset
                         if (outA > 0)
                         {
                             image.Pixels[outIdx] = (byte)((b * srcA + image.Pixels[outIdx] * dstA * (1f - srcA)) / outA);
-                            image.Pixels[outIdx + 1] = (byte)((g * srcA + image.Pixels[outIdx + 1] * dstA * (1f - srcA)) / outA);
-                            image.Pixels[outIdx + 2] = (byte)((r * srcA + image.Pixels[outIdx + 2] * dstA * (1f - srcA)) / outA);
+                            image.Pixels[outIdx + 1] = (byte)((g * srcA + image.Pixels[outIdx] * dstA * (1f - srcA)) / outA);
+                            image.Pixels[outIdx + 2] = (byte)((r * srcA + image.Pixels[outIdx] * dstA * (1f - srcA)) / outA);
                             image.Pixels[outIdx + 3] = (byte)(outA * 255f);
                         }
                     }
@@ -295,7 +402,6 @@ public sealed class SpriteAsset
         }
         return new SpriteFrame(image, x0, y0);
     }
-
 
     /// <summary>
     /// Frame <paramref name="index"/> placed on a canvas the size of <see cref="Bounds"/>, so every frame
@@ -321,18 +427,18 @@ public sealed class SpriteAsset
         {
             SpriteRecord rec = Records[f];
             int p = DataOffset + rec.FrameOffset;
+
             for (int s = 0; s < rec.SegmentCount; s++)
             {
-                if (p + 5 > _data.Length)
-                    return $"frame {f}: segment {s} header past end of asset";
-                int x = BinaryPrimitives.ReadUInt16LittleEndian(_data.AsSpan(p));
-                int y = BinaryPrimitives.ReadUInt16LittleEndian(_data.AsSpan(p + 2));
-                int count = _data[p + 4];
-                if (count == 0) count = 1;
-                if (x < rec.X0 || x + count > rec.X0 + rec.W || y < rec.Y0 || y > rec.Y1)
-                    return $"frame {f}: segment {s} at ({x},{y})+{count} outside the frame's box";
-                p += 5 + 2 * count;
+                if (!TryReadSegmentHeader(_data, p, Format, out SpriteSegmentHeader h))
+                    return $"frame {f}: segment {s} invalid or past end of asset";
+
+                if (h.X < rec.X0 || h.X + h.Count > rec.X0 + rec.W || h.Y < rec.Y0 || h.Y > rec.Y1)
+                    return $"frame {f}: segment {s} at ({h.X},{h.Y})+{h.Count} outside the frame's box";
+
+                p += h.HeaderBytes + h.PixelBytes;
             }
+
             int expectedEnd = f + 1 < Records.Count ? DataOffset + Records[f + 1].FrameOffset : _data.Length;
             if (p != expectedEnd)
                 return $"frame {f}: walked to {p}, expected {expectedEnd}";

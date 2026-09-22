@@ -21,7 +21,7 @@ public sealed class ScanCache
     };
 
     /// <summary>Bump when the classifier or cache schema changes so old answers are discarded.</summary>
-    public const int FormatVersion = 5;
+    public const int FormatVersion = 6;
 
     public sealed class CachedEntry
     {
@@ -98,9 +98,8 @@ public sealed class ScanCache
             if (File.Exists(path))
             {
                 var doc = JsonSerializer.Deserialize<Document>(File.ReadAllText(path), Options);
-                if (doc is not null && (doc.Version == FormatVersion || doc.Version == 4))
+                if (doc is not null && doc.Version == FormatVersion)
                 {
-                    doc.Version = FormatVersion;
                     return new ScanCache(path, doc, includeShipped);
                 }
             }

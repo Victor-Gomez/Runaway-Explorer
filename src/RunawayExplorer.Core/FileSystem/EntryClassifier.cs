@@ -20,7 +20,7 @@ public sealed record EntryClassification(EntryKind Kind, ImageInfo? Image)
 /// </summary>
 public static class EntryClassifier
 {
-    public static EntryClassification Classify(byte[] data)
+    public static EntryClassification Classify(byte[] data, int? sceneWidth = null, int? sceneHeight = null)
     {
         ArgumentNullException.ThrowIfNull(data);
 
@@ -58,12 +58,22 @@ public static class EntryClassifier
             });
         }
 
-        if (RleMaskDecoder.Detect(data) is { } mask)
+        if (RleMaskDecoder.Detect(data, sceneWidth, sceneHeight) is { } mask)
         {
             return new EntryClassification(EntryKind.Mask, new ImageInfo
             {
                 Width = mask.Width,
                 Height = mask.Height,
+                IsMask = true,
+            });
+        }
+
+        if (SparseMaskDecoder.Detect(data, sceneWidth, sceneHeight) is { } sparseMask)
+        {
+            return new EntryClassification(EntryKind.Mask, new ImageInfo
+            {
+                Width = sparseMask.Width,
+                Height = sparseMask.Height,
                 IsMask = true,
             });
         }

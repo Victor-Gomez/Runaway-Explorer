@@ -14,21 +14,107 @@ public static class RleMaskDecoder
 {
     private static readonly int[] CandidateWidths =
     [
-        1024, 1224, 1236, 1280, 1372, 1444, 1468, 1560, 1564, 1584, 1600, 1648, 1688, 1740, 1828, 1852, 1920, 1924, 2048, 2592, 2616, 2740, 3288
+        1024, 1224, 1236, 1280, 1372, 1380, 1444, 1468, 1508, 1560, 1564, 1584, 1600, 1612, 1624, 1648, 1650, 1688, 1740, 1784, 1824, 1828, 1852, 1920, 1924, 1988, 2048, 2592, 2616, 2740, 3288
     ];
 
     /// <summary>
-    /// Checks whether the data is a valid scanline-bounded RLE scene mask.
+    /// Checks whether the data is a valid scanline-bounded or continuous RLE scene mask.
     /// </summary>
-    public static MaskInfo? Detect(ReadOnlySpan<byte> data)
+    public static MaskInfo? Detect(ReadOnlySpan<byte> data, int? sceneWidth = null, int? sceneHeight = null)
     {
         if (data.Length < 6 || data.Length % 3 != 0)
             return null;
+
+        if (sceneWidth.HasValue && sceneWidth.Value > 0)
+        {
+            if (DetectWithWidth(data, sceneWidth.Value) is { } matchW)
+                return matchW;
+        }
 
         foreach (int w in CandidateWidths)
         {
             if (DetectWithWidth(data, w) is { } info)
                 return info;
+        }
+
+        if (DetectContinuous(data, sceneWidth, sceneHeight) is { } continuousInfo)
+            return continuousInfo;
+
+        return null;
+    }
+
+    /// <summary>
+    /// Tests whether the RLE stream represents a continuous mask (as in Runaway 3) where runs wrap across scanlines.
+    /// </summary>
+    public static MaskInfo? DetectContinuous(ReadOnlySpan<byte> data, int? sceneWidth = null, int? sceneHeight = null)
+    {
+        if (data.Length < 6 || data.Length % 3 != 0)
+            return null;
+
+        long totalPx = 0;
+        int runCount = 0;
+        Span<bool> seenIds = stackalloc bool[256];
+        int uniqueIds = 0;
+
+        for (int p = 0; p + 3 <= data.Length; p += 3)
+        {
+            byte id = data[p];
+            ushort len = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(p + 1, 2));
+            if (len == 0)
+                return null;
+
+            totalPx += len;
+            runCount++;
+
+            if (!seenIds[id])
+            {
+                seenIds[id] = true;
+                uniqueIds++;
+            }
+        }
+
+        if (uniqueIds < 2)
+            return null;
+
+        // If enclosing scene background dimensions are known and match totalPx, that is the exact geometry.
+        if (sceneWidth.HasValue && sceneHeight.HasValue && (long)sceneWidth.Value * sceneHeight.Value == totalPx)
+        {
+            return new MaskInfo(sceneWidth.Value, sceneHeight.Value, runCount, uniqueIds);
+        }
+
+        // Standard screen width of 1280 with standard or multi-screen heights (1280x720, 1280x960, 1280x1080, 1280x1352, 1280x1440):
+        if (totalPx % 1280 == 0)
+        {
+            int h = (int)(totalPx / 1280);
+            if (h is 720 or 960 or 1080 or 1352 or 1440 || (h >= 600 && h <= 2160))
+                return new MaskInfo(1280, h, runCount, uniqueIds);
+        }
+
+        // Standard screen height of 720 with widescreen or panoramic widths:
+        if (totalPx % 720 == 0)
+        {
+            int w = (int)(totalPx / 720);
+            if (w >= 1000 && w <= 2500)
+                return new MaskInfo(w, 720, runCount, uniqueIds);
+        }
+
+        // Known multi-screen and custom scene aspect ratios:
+        foreach (int w in new[] { 1852, 1508, 1784, 1624, 1380, 1024 })
+        {
+            if (totalPx % w == 0)
+            {
+                int h = (int)(totalPx / w);
+                if (h >= 600 && h <= 2160)
+                    return new MaskInfo(w, h, runCount, uniqueIds);
+            }
+        }
+
+        // Fallback for standard 600-height scenes:
+        if (totalPx % 600 == 0)
+        {
+            int w = (int)(totalPx / 600);
+            if (w >= 1000 && w <= 4000)
+                return new MaskInfo(w, 600, runCount, uniqueIds);
         }
 
         return null;
@@ -168,9 +254,9 @@ public static class RleMaskDecoder
     }
 
     /// <summary>Detect + decode in one step. Returns null if not a valid RLE mask.</summary>
-    public static (DecodedImage Image, MaskInfo Info)? TryDecode(ReadOnlySpan<byte> data, byte[]? idMap = null)
+    public static (DecodedImage Image, MaskInfo Info)? TryDecode(ReadOnlySpan<byte> data, byte[]? idMap = null, int? sceneWidth = null, int? sceneHeight = null)
     {
-        if (Detect(data) is not { } info)
+        if (Detect(data, sceneWidth, sceneHeight) is not { } info)
             return null;
         return (Decode(data, info.Width, info.Height, idMap), info);
     }

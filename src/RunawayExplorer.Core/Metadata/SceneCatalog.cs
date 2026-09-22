@@ -37,11 +37,25 @@ public static class SceneCatalog
         new(6, "The Hidden Temple", "El templo oculto"),
     ];
 
+    public static readonly IReadOnlyList<ChapterInfo> ChaptersR3 =
+    [
+        new(1, "Brian Basco Is Dead", "Brian Basco ha muerto"),
+        new(2, "The Art of Running Away", "El arte de escapar"),
+        new(3, "A Timely Suicide", "Un suicidio bien oportuno"),
+        new(4, "An Unexpected Ally", "Un aliado inesperado"),
+        new(5, "Deconstructing Brian", "Brian en todos sus estados"),
+        new(6, "The End Is Here", "El final está cerca"),
+        new(7, "Epilogue & Flashbacks", "Epílogo y recuerdos"),
+    ];
+
     private static readonly Dictionary<int, ChapterInfo> ChaptersByNumber =
         Chapters.ToDictionary(c => c.Number);
 
     private static readonly Dictionary<int, ChapterInfo> ChaptersByNumberR2 =
         ChaptersR2.ToDictionary(c => c.Number);
+
+    private static readonly Dictionary<int, ChapterInfo> ChaptersByNumberR3 =
+        ChaptersR3.ToDictionary(c => c.Number);
 
     private static readonly Dictionary<string, SceneInfo> ScenesByName =
         new(StringComparer.OrdinalIgnoreCase)
@@ -250,6 +264,86 @@ public static class SceneCatalog
             ["RESOURCE.SP5"] = new("RESOURCE.SP5", 5, "Spanish Overlay: Chapter 5", "Textos español: Capítulo 5"),
         };
 
+    private static readonly Dictionary<string, SceneInfo> ScenesByNameR3 =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            // Chapter 1: Brian Basco Is Dead / Brian Basco ha muerto
+            ["RESOURCE.A01"] = new("RESOURCE.A01", 1, "Cemetery: Brian's Grave", "Cementerio: Tumba de Brian"),
+            ["RESOURCE.A02"] = new("RESOURCE.A02", 1, "Cemetery: Main Gate & Path", "Cementerio: Puerta principal y camino"),
+            ["RESOURCE.A03"] = new("RESOURCE.A03", 1, "Cemetery: Crypt Exterior", "Cementerio: Exterior de la cripta"),
+            ["RESOURCE.A04"] = new("RESOURCE.A04", 1, "Cemetery: Crypt Interior", "Cementerio: Interior de la cripta"),
+            ["RESOURCE.A05"] = new("RESOURCE.A05", 1, "Cemetery: Mausoleum Hall", "Cementerio: Sala del mausoleo"),
+            ["RESOURCE.A06"] = new("RESOURCE.A06", 1, "Cemetery: Chapel", "Cementerio: Capilla"),
+            ["RESOURCE.A07"] = new("RESOURCE.A07", 1, "Cemetery: Caretaker's Hut", "Cementerio: Caseta del sepulturero"),
+            ["RESOURCE.A08"] = new("RESOURCE.A08", 1, "Cemetery: Stone Wall & Trees", "Cementerio: Muro de piedra y árboles"),
+            ["RESOURCE.A09"] = new("RESOURCE.A09", 1, "Cemetery: Graveyard Grounds", "Cementerio: Terreno del camposanto"),
+            ["RESOURCE.A10"] = new("RESOURCE.A10", 1, "Cemetery: Memorial Walk", "Cementerio: Paseo memorial"),
+            ["RESOURCE.A11"] = new("RESOURCE.A11", 1, "Cemetery: Escape Route", "Cementerio: Ruta de escape"),
+            ["RESOURCE.A12"] = new("RESOURCE.A12", 1, "Cemetery: Secret Passage", "Cementerio: Pasadizo secreto"),
+
+            // Chapter 2: The Art of Running Away / El arte de escapar
+            ["RESOURCE.B00"] = new("RESOURCE.B00", 2, "Happy Dale: Exterior Overview", "Happy Dale: Vista exterior"),
+            ["RESOURCE.B01"] = new("RESOURCE.B01", 2, "Happy Dale: Brian's Room", "Happy Dale: Habitación de Brian"),
+            ["RESOURCE.B02"] = new("RESOURCE.B02", 2, "Happy Dale: Main Corridor", "Happy Dale: Pasillo principal"),
+            ["RESOURCE.B03"] = new("RESOURCE.B03", 2, "Happy Dale: Common Recreation Room", "Happy Dale: Sala de recreo"),
+            ["RESOURCE.B04"] = new("RESOURCE.B04", 2, "Happy Dale: Nurse Station", "Happy Dale: Control de enfermería"),
+            ["RESOURCE.B05"] = new("RESOURCE.B05", 2, "Happy Dale: Dr. Bennett's Office", "Happy Dale: Despacho del Dr. Bennett"),
+            ["RESOURCE.B07"] = new("RESOURCE.B07", 2, "Happy Dale: Security Checkpoint", "Happy Dale: Control de seguridad"),
+            ["RESOURCE.B08"] = new("RESOURCE.B08", 2, "Happy Dale: Courtyard & Garden", "Happy Dale: Patio y jardín"),
+            ["RESOURCE.B10"] = new("RESOURCE.B10", 2, "Happy Dale: Therapy Room", "Happy Dale: Sala de terapia"),
+            ["RESOURCE.B11"] = new("RESOURCE.B11", 2, "Happy Dale: Ernie's Room", "Happy Dale: Habitación de Ernie"),
+            ["RESOURCE.B12"] = new("RESOURCE.B12", 2, "Happy Dale: Gabbo's Room", "Happy Dale: Habitación de Gabbo"),
+            ["RESOURCE.B13"] = new("RESOURCE.B13", 2, "Happy Dale: Marcelo's Quarters", "Happy Dale: Cuarto de Marcelo"),
+            ["RESOURCE.B14"] = new("RESOURCE.B14", 2, "Happy Dale: Restrooms", "Happy Dale: Baños"),
+            ["RESOURCE.B15"] = new("RESOURCE.B15", 2, "Happy Dale: Storage & Utility", "Happy Dale: Almacén y mantenimiento"),
+            ["RESOURCE.B16"] = new("RESOURCE.B16", 2, "Happy Dale: Laundry Room", "Happy Dale: Lavandería"),
+            ["RESOURCE.B19"] = new("RESOURCE.B19", 2, "Happy Dale: Ventilation Shaft", "Happy Dale: Conducto de ventilación"),
+            ["RESOURCE.B20"] = new("RESOURCE.B20", 2, "Happy Dale: Perimeter Wall & Fence", "Happy Dale: Valla perimetral"),
+
+            // Chapter 3: A Timely Suicide / Un suicidio bien oportuno
+            ["RESOURCE.C01"] = new("RESOURCE.C01", 3, "Lake Cabin: Main Living Area", "Cabaña del lago: Salón principal"),
+            ["RESOURCE.C02"] = new("RESOURCE.C02", 3, "Lake Cabin: Kitchen & Counter", "Cabaña del lago: Cocina y encimera"),
+            ["RESOURCE.C03"] = new("RESOURCE.C03", 3, "Lake Cabin: Bedroom", "Cabaña del lago: Dormitorio"),
+            ["RESOURCE.C06"] = new("RESOURCE.C06", 3, "Lake Cabin: Porch & Deck", "Cabaña del lago: Porche y terraza"),
+            ["RESOURCE.C07"] = new("RESOURCE.C07", 3, "Lake Shore: Wooden Pier", "Orilla del lago: Muelle de madera"),
+            ["RESOURCE.C08"] = new("RESOURCE.C08", 3, "Lake Shore: Boathouse & Shed", "Orilla del lago: Cobertizo de botes"),
+            ["RESOURCE.C09"] = new("RESOURCE.C09", 3, "Lake Forest: Wooded Path", "Bosque del lago: Sendero arbolado"),
+            ["RESOURCE.C10"] = new("RESOURCE.C10", 3, "Lake Stream: Old Wooden Bridge", "Arroyo del lago: Puente viejo"),
+            ["RESOURCE.C11"] = new("RESOURCE.C11", 3, "Lake Forest: Forest Clearing", "Bosque del lago: Claro del bosque"),
+            ["RESOURCE.C12"] = new("RESOURCE.C12", 3, "Lake Cabin: Storage Annex", "Cabaña del lago: Anexo de almacenaje"),
+            ["RESOURCE.C15"] = new("RESOURCE.C15", 3, "Lake Cabin: Investigation Room", "Cabaña del lago: Sala de investigación"),
+
+            // Chapter 4: An Unexpected Ally / Un aliado inesperado
+            ["RESOURCE.D00"] = new("RESOURCE.D00", 4, "Morgue: Basement Hallway", "Depósito de cadáveres: Pasillo del sótano"),
+            ["RESOURCE.D01"] = new("RESOURCE.D01", 4, "Morgue: Autopsy Lab", "Depósito de cadáveres: Sala de autopsias"),
+            ["RESOURCE.D02"] = new("RESOURCE.D02", 4, "Morgue: Cold Storage & Lockers", "Depósito de cadáveres: Cámaras frigoríficas"),
+            ["RESOURCE.D03"] = new("RESOURCE.D03", 4, "Morgue: Incinerator Room", "Depósito de cadáveres: Sala del incinerador"),
+            ["RESOURCE.D04"] = new("RESOURCE.D04", 4, "Morgue: Preparation Chamber", "Depósito de cadáveres: Sala de preparación"),
+            ["RESOURCE.D05"] = new("RESOURCE.D05", 4, "Morgue: Medical Records Office", "Depósito de cadáveres: Archivo médico"),
+            ["RESOURCE.D06"] = new("RESOURCE.D06", 4, "Morgue: Supply Closet", "Depósito de cadáveres: Armario de suministros"),
+            ["RESOURCE.D07"] = new("RESOURCE.D07", 4, "Morgue: Loading Bay", "Depósito de cadáveres: Bahía de carga"),
+            ["RESOURCE.D10"] = new("RESOURCE.D10", 4, "Morgue: Hatch & Air Duct", "Depósito de cadáveres: Escotilla y conducto"),
+            ["RESOURCE.D11"] = new("RESOURCE.D11", 4, "Morgue: Emergency Exit", "Depósito de cadáveres: Salida de emergencia"),
+
+            // Chapter 5: Deconstructing Brian / Brian en todos sus estados
+            ["RESOURCE.E01"] = new("RESOURCE.E01", 5, "Flashback: Tanton Manor & Camp", "Recuerdo: Mansión Tanton y campamento"),
+
+            // Chapter 6: The End Is Here / El final está cerca
+            ["RESOURCE.F01"] = new("RESOURCE.F01", 6, "New York: Dark Alleyways", "Nueva York: Callejones oscuros"),
+            ["RESOURCE.F03"] = new("RESOURCE.F03", 6, "New York: Construction Crane & Rooftops", "Nueva York: Grúa de construcción y azoteas"),
+            ["RESOURCE.F04"] = new("RESOURCE.F04", 6, "New York: Final Showdown", "Nueva York: Desenlace final"),
+
+            // Epilogue & Cutscenes & Localized Overlays
+            ["RESOURCE.H01"] = new("RESOURCE.H01", 7, "Epilogue: Flashback & Revelation", "Epílogo: Recuerdos y revelación"),
+            ["RESOURCE.002"] = new("RESOURCE.002", 0, "Cinematic Cutscene Animations", "Animaciones de cinemáticas"),
+            ["RESOURCE.SP1"] = new("RESOURCE.SP1", 1, "Spanish Overlay: Chapter 1", "Textos español: Capítulo 1"),
+            ["RESOURCE.SP2"] = new("RESOURCE.SP2", 2, "Spanish Overlay: Chapter 2", "Textos español: Capítulo 2"),
+            ["RESOURCE.SP3"] = new("RESOURCE.SP3", 3, "Spanish Overlay: Chapter 3", "Textos español: Capítulo 3"),
+            ["RESOURCE.SP5"] = new("RESOURCE.SP5", 5, "Spanish Overlay: Chapter 5", "Textos español: Capítulo 5"),
+            ["RESOURCE.SP6"] = new("RESOURCE.SP6", 6, "Spanish Overlay: Chapter 6", "Textos español: Capítulo 6"),
+            ["RESOURCE.SP7"] = new("RESOURCE.SP7", 7, "Spanish Overlay: Epilogue", "Textos español: Epílogo"),
+        };
+
     private static readonly Dictionary<string, (string En, string Es)> AudioNames =
         new(StringComparer.OrdinalIgnoreCase)
         {
@@ -264,7 +358,7 @@ public static class SceneCatalog
             ["RESOURCE.S02"] = ("Museum Ambience & SFX", "Museo: Ambiente y efectos"),
             ["RESOURCE.S03"] = ("Desert Ambience & SFX", "Desierto: Ambiente y efectos"),
             ["RESOURCE.S04"] = ("Douglasville Ambience & SFX", "Douglasville: Ambiente y efectos"),
-            ["RESOURCE.S05"] = ("Saloon & Town Ambience & SFX", "Saloon y pueblo: Ambiente y efectos"),
+            ["RESOURCE.S05"] = ("Pueblo Ambience & SFX", "Pueblo: Ambiente y efectos"),
             ["RESOURCE.S06"] = ("Crypts & Caves Ambience & SFX", "Criptas y cuevas: Ambiente y efectos"),
             ["RESOURCE.S07"] = ("Hopi Village Ambience & SFX", "Poblado hopi: Ambiente y efectos"),
             ["RESOURCE.S08"] = ("Military Camp Ambience & SFX", "Campamento militar: Ambiente y efectos"),
@@ -290,6 +384,18 @@ public static class SceneCatalog
             ["RESOURCE.S06"] = ("Sound Effects", "Efectos de sonido"),
         };
 
+    private static readonly Dictionary<string, (string En, string Es)> AudioNamesR3 =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["RESOURCE.S00"] = ("Menu & Interface Sounds", "Sonidos de menú e interfaz"),
+            ["RESOURCE.S01"] = ("Chapter 1 Sound Effects", "Efectos de sonido: Capítulo 1"),
+            ["RESOURCE.S02"] = ("Chapter 2 Sound Effects", "Efectos de sonido: Capítulo 2"),
+            ["RESOURCE.S03"] = ("Chapter 3 Sound Effects", "Efectos de sonido: Capítulo 3"),
+            ["RESOURCE.S05"] = ("Chapter 5 Sound Effects", "Efectos de sonido: Capítulo 5"),
+            ["RESOURCE.S06"] = ("Chapter 6 Sound Effects", "Efectos de sonido: Capítulo 6"),
+            ["RESOURCE.S07"] = ("Epilogue Sound Effects", "Efectos de sonido: Epílogo"),
+        };
+
     private static readonly Dictionary<string, (string En, string Es)> CategoryNames =
         new(StringComparer.OrdinalIgnoreCase)
         {
@@ -303,22 +409,31 @@ public static class SceneCatalog
             [VirtualFileSystem.GlobalFolder] = ("Global Data", "Datos globales"),
         };
 
+    private static readonly IReadOnlyDictionary<int, ChapterInfo>[] ChaptersPerGame =
+        [ChaptersByNumber, ChaptersByNumberR2, ChaptersByNumberR3];
+
+    private static readonly IReadOnlyDictionary<string, SceneInfo>[] ScenesPerGame =
+        [ScenesByName, ScenesByNameR2, ScenesByNameR3];
+
+    private static readonly IReadOnlyDictionary<string, (string En, string Es)>[] AudioPerGame =
+        [AudioNames, AudioNamesR2, AudioNamesR3];
+
     public static bool IsSpanish(string? language) =>
         string.Equals(language, "es", StringComparison.OrdinalIgnoreCase) ||
         (language is null && CultureInfo.CurrentUICulture.TwoLetterISOLanguageName.Equals("es", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>Returns the official chapter information if known.</summary>
     public static ChapterInfo? GetChapter(int chapterNumber, GameVersion game = GameVersion.Runaway1) =>
-        (game == GameVersion.Runaway2 ? ChaptersByNumberR2 : ChaptersByNumber).GetValueOrDefault(chapterNumber);
+        ChaptersPerGame[Math.Clamp((int)game, 0, 2)].GetValueOrDefault(chapterNumber);
 
     /// <summary>Returns friendly scene title with readable name first and internal name after (e.g. "Ch. 1 (\"Wake Up, Brian!\"): Hospital: Gina's Room (RESOURCE.A01)").</summary>
     public static string GetSceneTitle(string archiveName, string? language = null, GameVersion game = GameVersion.Runaway1)
     {
         string baseName = Path.GetFileName(archiveName);
         bool es = IsSpanish(language);
-
-        var scenes = game == GameVersion.Runaway2 ? ScenesByNameR2 : ScenesByName;
-        var chapters = game == GameVersion.Runaway2 ? ChaptersByNumberR2 : ChaptersByNumber;
+        int gameIdx = Math.Clamp((int)game, 0, 2);
+        var scenes = ScenesPerGame[gameIdx];
+        var chapters = ChaptersPerGame[gameIdx];
 
         if (scenes.TryGetValue(baseName, out SceneInfo? info))
         {
@@ -339,8 +454,7 @@ public static class SceneCatalog
     {
         string baseName = Path.GetFileName(archiveName);
         bool es = IsSpanish(language);
-
-        var audio = game == GameVersion.Runaway2 ? AudioNamesR2 : AudioNames;
+        var audio = AudioPerGame[Math.Clamp((int)game, 0, 2)];
 
         if (audio.TryGetValue(baseName, out var pair))
         {

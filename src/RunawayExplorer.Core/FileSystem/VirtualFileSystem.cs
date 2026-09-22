@@ -121,7 +121,7 @@ public sealed class VirtualFileSystem
         string? datavDir = FindDir(baseDir, "Datav");
 
         VideoKeyfile? keyfile = null;
-        if (datavDir is not null)
+        if (datavDir is not null && gameVersion != GameVersion.Runaway3)
         {
             string? keyPath = Directory.EnumerateFiles(datavDir).FirstOrDefault(f => VideoKeyfile.IsKeyfileName(Path.GetFileName(f)));
             if (keyPath is not null)
@@ -217,7 +217,7 @@ public sealed class VirtualFileSystem
                 progress?.Invoke($"Reading {name}");
                 summary.AudioClips += Attach(ambient, BuildAudioArchive(path, EntryKind.Ambient, AmbientPcm, dedupe: false, activeLanguage, gameVersion)).Children.Count;
             }
-            else if (upper == "RESOURCE.002")
+            else if (upper == "RESOURCE.002" && gameVersion != GameVersion.Runaway3)
             {
                 progress?.Invoke($"Reading {name}");
                 summary.AudioClips += Attach(cinematic, BuildAudioArchive(path, EntryKind.Cinematic, CinematicPcm, dedupe: true, activeLanguage, gameVersion)).Children.Count;
@@ -247,7 +247,7 @@ public sealed class VirtualFileSystem
         if (datavDir is not null)
         {
             progress?.Invoke("Reading videos");
-            summary.Videos = BuildVideos(video, datavDir, keyfile);
+            summary.Videos = BuildVideos(video, datavDir, keyfile, gameVersion);
         }
 
         // Empty categories only add noise.
@@ -313,6 +313,10 @@ public sealed class VirtualFileSystem
             using FileStream f = File.OpenRead(path);
             List<ArchiveEntry> rawEntries = SceneArchive.ReadEntries(f);
             var pairedWithPrev = new HashSet<int>();
+            Span<byte> head = stackalloc byte[16];
+
+            int? sceneWidth = null;
+            int? sceneHeight = null;
 
             for (int i = 0; i < rawEntries.Count; i++)
             {
@@ -331,7 +335,6 @@ public sealed class VirtualFileSystem
                     ArchiveEntry nextEntry = rawEntries[i + 1];
                     if (entry.Offset + entry.Size == nextEntry.Offset)
                     {
-                        Span<byte> head = stackalloc byte[16];
                         f.Position = entry.Offset;
                         if (f.Read(head) == 16)
                         {
@@ -374,12 +377,17 @@ public sealed class VirtualFileSystem
                     EntryClassification c;
                     try
                     {
-                        c = EntryClassifier.Classify(buffer);
+                        c = EntryClassifier.Classify(buffer, sceneWidth, sceneHeight);
                     }
                     catch (Exception)
                     {
                         // A malformed entry must not take the whole archive down; it is simply "data".
                         c = EntryClassification.DataEntry;
+                    }
+                    if (c.Kind == EntryKind.Background && sceneWidth is null && c.Image is not null)
+                    {
+                        sceneWidth = c.Image.Width;
+                        sceneHeight = c.Image.Height;
                     }
                     cached.Add(ScanCache.CachedEntry.From(entry, c));
                 }
@@ -541,7 +549,7 @@ public sealed class VirtualFileSystem
 
     private static int BuildVoice(FsNode voice, string dataaDir, GameVersion gameVersion)
     {
-        if (gameVersion == GameVersion.Runaway2)
+        if (gameVersion is GameVersion.Runaway2 or GameVersion.Runaway3)
         {
             string? dataaa = Directory.EnumerateFiles(dataaDir)
                 .FirstOrDefault(f => Path.GetFileName(f).Equals("Dataaa.000", StringComparison.OrdinalIgnoreCase));
@@ -578,24 +586,22 @@ public sealed class VirtualFileSystem
                     ArchivePath = clip.ShardPath,
                     Audio = voiceMp3,
                 };
-                node.FriendlyName = $"{node.Name}  {FormatDuration(voiceMp3.DurationSeconds(clip.Size))}";
+                node.FriendlyName = $"{node.Name}  {FormatDuration(VoicePcm.DurationSeconds(clip.Size))}";
                 Attach(group, node);
             }
             return clips.Count;
         }
 
-        var shards = new List<string>();
-        foreach (string wanted in VoiceArchive.ShardNames())
-        {
-            string? found = Directory.EnumerateFiles(dataaDir)
-                .FirstOrDefault(f => Path.GetFileName(f).Equals(wanted, StringComparison.OrdinalIgnoreCase));
-            if (found is not null)
-                shards.Add(found);
-        }
-        if (shards.Count == 0)
+        var r1Shards = VoiceArchive.ShardNames()
+            .Select(name => Directory.EnumerateFiles(dataaDir).FirstOrDefault(f => Path.GetFileName(f).Equals(name, StringComparison.OrdinalIgnoreCase)))
+            .Where(path => path is not null)
+            .Cast<string>()
+            .ToList();
+
+        if (r1Shards.Count == 0)
             return 0;
 
-        SortedDictionary<int, VoiceArchive.VoiceClip> r1Clips = VoiceArchive.ReadClips(shards);
+        SortedDictionary<int, VoiceArchive.VoiceClip> r1Clips = VoiceArchive.ReadClips(r1Shards);
         var r1Groups = new Dictionary<int, FsNode>();
         foreach (VoiceArchive.VoiceClip clip in r1Clips.Values)
         {
@@ -629,7 +635,7 @@ public sealed class VirtualFileSystem
         return r1Clips.Count;
     }
 
-    private static int BuildVideos(FsNode video, string datavDir, VideoKeyfile? keyfile)
+    private static int BuildVideos(FsNode video, string datavDir, VideoKeyfile? keyfile, GameVersion gameVersion)
     {
         int count = 0;
         string[] files = Directory.GetFiles(datavDir);
@@ -637,11 +643,12 @@ public sealed class VirtualFileSystem
         foreach (string path in files)
         {
             string name = Path.GetFileName(path);
-            if (VideoKeyfile.IsKeyfileName(name))
+            if (gameVersion != GameVersion.Runaway3 && VideoKeyfile.IsKeyfileName(name))
                 continue;
 
             var fi = new FileInfo(path);
-            bool restorable = keyfile?.HeaderFor(name) is not null;
+            bool isR3 = gameVersion == GameVersion.Runaway3;
+            bool restorable = isR3 || keyfile?.HeaderFor(name) is not null;
             Attach(video, new FsNode
             {
                 NodeType = FsNodeType.File,
@@ -834,8 +841,16 @@ public sealed class VirtualFileSystem
     public bool RestoreVideo(FsNode node, Stream output)
     {
         ArgumentNullException.ThrowIfNull(node);
-        if (node.Kind != EntryKind.Video || Keyfile is null || node.ArchivePath is null)
+        if (node.Kind != EntryKind.Video || node.ArchivePath is null)
             return false;
+
+        if (GameVersion == GameVersion.Runaway3 || Keyfile is null)
+        {
+            using FileStream src = File.OpenRead(node.ArchivePath);
+            src.CopyTo(output);
+            return true;
+        }
+
         return Keyfile.Restore(node.ArchivePath, output);
     }
 
