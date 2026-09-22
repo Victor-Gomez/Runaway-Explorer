@@ -17,8 +17,8 @@ headers; the formats were reverse-engineered from the Steam release and are writ
 
 - **Whole-install browsing.** Every archive is scanned once and its entries classified by what they
   actually are (a byte-exact structural check, not a guess). The tree is organised by kind: Scenes,
-  Music, Ambient & SFX, Cinematic Audio, Voice, Lip-sync, Video, Global Data. Classifications are cached
-  between launches, so reopening an install is instant.
+  Music, Ambient & SFX, Cinematic Audio, Voice, Lip-sync, Video, Global Data. Includes a pre-computed
+  hash-based scan cache for known files so first-time loading is near-instant (~200 ms).
 - **Backgrounds, scene masks and overlays.** Raw RGB565 rasters (with width recovered from pixels),
   positioned row-record overlays (props, foreground layers, title cards, UI), and RLE scene masks
   (interaction hotspots, walkboxes, and depth planes). Overlays and scene masks can be drawn on their
