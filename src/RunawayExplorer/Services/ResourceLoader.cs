@@ -44,9 +44,30 @@ public static class ResourceLoader
                     byte[]? table1536 = vfs.SceneAttributeTableFor(node);
                     byte[]? idMap = table1536 is not null ? RleMaskDecoder.ExtractObjectMapping(table1536) : null;
                     ImageInfo? info = node.Image;
+
+                    int? sceneW = info?.Width;
+                    int? sceneH = info?.Height;
+                    if (sceneW is null)
+                    {
+                        var bg = vfs.SceneBackgroundFor(node);
+                        if (bg is not null)
+                        {
+                            sceneW = bg.Width;
+                            sceneH = bg.Height;
+                        }
+                    }
+
+                    if (SparseMaskDecoder.Detect(data, sceneW, sceneH) is { } smInfo)
+                    {
+                        int w = sceneW ?? smInfo.Width;
+                        int h = sceneH ?? smInfo.Height;
+                        DecodedImage img = SparseMaskDecoder.Decode(data, w, h, idMap, colorSeed: node.EntryIndex);
+                        return new ImageResource(img, 0, 0, true, "scene mask");
+                    }
+
                     if (info is null)
                     {
-                        if (RleMaskDecoder.TryDecode(data, idMap) is not { } md)
+                        if (RleMaskDecoder.TryDecode(data, idMap, sceneW, sceneH) is not { } md)
                             return new ErrorResource($"'{node.GetPath()}' no longer parses as an RLE scene mask.");
                         return new ImageResource(md.Image, 0, 0, true, "scene mask");
                     }

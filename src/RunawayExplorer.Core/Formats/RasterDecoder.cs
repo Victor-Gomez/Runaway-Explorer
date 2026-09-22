@@ -43,11 +43,16 @@ public static class RasterDecoder
 
         int total = data.Length / 2;
 
-        // Exactly one full screen needs no detection.
+        // Exactly one full screen needs no detection (Runaway 1/2: 1024x600, Runaway 3: 1280x720).
         const int screen = Rgb565.ScreenWidth * Rgb565.ScreenHeight;
+        const int screenR3 = 1280 * 720;
         if (total == screen)
         {
             return new RasterInfo(Rgb565.ScreenWidth, Rgb565.ScreenHeight, 99.0, IsMaskLayer(data, Rgb565.ScreenWidth, Rgb565.ScreenHeight));
+        }
+        if (total == screenR3)
+        {
+            return new RasterInfo(1280, 720, 99.0, IsMaskLayer(data, 1280, 720));
         }
 
         (int w0, double sharp)? detected = DetectStride(data);
@@ -70,6 +75,11 @@ public static class RasterDecoder
         {
             int h = total / Rgb565.ScreenWidth;
             return new RasterInfo(Rgb565.ScreenWidth, h, 99.0, IsMaskLayer(data, Rgb565.ScreenWidth, h));
+        }
+        if (total % screenR3 == 0)
+        {
+            int h = total / 1280;
+            return new RasterInfo(1280, h, 99.0, IsMaskLayer(data, 1280, h));
         }
 
         return null;
@@ -214,7 +224,7 @@ public static class RasterDecoder
                 continue;
 
             int subW = detectedW / factor;
-            if (subW < Rgb565.ScreenWidth || totalPixels % subW != 0)
+            if (subW < 1000 || totalPixels % subW != 0)
                 continue;
 
             double scoreSub = ScoreStride(data, start, nSample, subW);
@@ -227,7 +237,7 @@ public static class RasterDecoder
         return detectedW;
     }
 
-    private static double ScoreStride(ReadOnlySpan<byte> data, int start, int length, int stride)
+    internal static double ScoreStride(ReadOnlySpan<byte> data, int start, int length, int stride)
     {
         int n = length - stride;
         if (n <= 0)

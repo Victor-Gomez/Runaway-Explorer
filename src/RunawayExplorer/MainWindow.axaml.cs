@@ -419,7 +419,7 @@ public partial class MainWindow : Window
         WarmUpMediaEngine();
 
         _initializingGameSelector = true;
-        GameSelectorCombo.SelectedIndex = _settings.ActiveGame == GameVersion.Runaway2 ? 1 : 0;
+        GameSelectorCombo.SelectedIndex = (int)_settings.ActiveGame;
         _initializingGameSelector = false;
 
         RefreshRecentInstallsMenu();
@@ -475,16 +475,14 @@ public partial class MainWindow : Window
         _vfs = null;
         Tree.ItemsSource = null;
         ClearContentPanels();
-        string gameName = _settings.ActiveGame == GameVersion.Runaway2
-            ? "Runaway: The Dream of the Turtle"
-            : "Runaway: A Road Adventure";
+        string gameName = _settings.ActiveGame.GetTitle();
         SetStatus($"No installation folder configured for {gameName}. Open Settings (Options -> Settings) to set the installation folder.");
     }
 
     private async void GameSelector_SelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
         if (_initializingGameSelector) return;
-        var newGame = GameSelectorCombo.SelectedIndex == 1 ? GameVersion.Runaway2 : GameVersion.Runaway1;
+        var newGame = (GameVersion)Math.Clamp(GameSelectorCombo.SelectedIndex, 0, 2);
         if (_settings.ActiveGame == newGame && _vfs is not null) return;
         _settings.ActiveGame = newGame;
         _settings.Save();
@@ -500,7 +498,7 @@ public partial class MainWindow : Window
         _settings.Save();
 
         _initializingGameSelector = true;
-        GameSelectorCombo.SelectedIndex = detected == GameVersion.Runaway2 ? 1 : 0;
+        GameSelectorCombo.SelectedIndex = (int)detected;
         _initializingGameSelector = false;
 
         await InitVfsAsync(folder);
@@ -1832,7 +1830,7 @@ public partial class MainWindow : Window
 
     private void LayoutImageStage(ImageResource image)
     {
-        bool isMask = string.Equals(image.Kind, "scene mask", StringComparison.OrdinalIgnoreCase);
+        bool isMask = image.Kind.Contains("mask", StringComparison.OrdinalIgnoreCase);
         bool showBg = image.Positioned && !string.Equals(_settings.BackgroundMode, "no", StringComparison.OrdinalIgnoreCase) && _selectedNode is not null;
         bool isGreyed = string.Equals(_settings.BackgroundMode, "greyed", StringComparison.OrdinalIgnoreCase);
 
@@ -1845,8 +1843,8 @@ public partial class MainWindow : Window
             ImageBackground.Source = background;
             ImageBackground.IsVisible = true;
             ImageStage.Background = Brushes.Black;
-            ImageStage.Width = Math.Max(background.PixelSize.Width, image.X + image.Image.Width);
-            ImageStage.Height = Math.Max(background.PixelSize.Height, image.Y + image.Image.Height);
+            ImageStage.Width = background.PixelSize.Width;
+            ImageStage.Height = background.PixelSize.Height;
             Canvas.SetLeft(PreviewImage, image.X);
             Canvas.SetTop(PreviewImage, image.Y);
             PreviewImage.Opacity = isMask ? 0.55 : 1.0;
@@ -2116,8 +2114,8 @@ public partial class MainWindow : Window
             AnimBackground.Source = background;
             AnimBackground.IsVisible = true;
             AnimStage.Background = Brushes.Black;
-            AnimStage.Width = Math.Max(background.PixelSize.Width, bx + bw);
-            AnimStage.Height = Math.Max(background.PixelSize.Height, by + bh);
+            AnimStage.Width = background.PixelSize.Width;
+            AnimStage.Height = background.PixelSize.Height;
             Canvas.SetLeft(AnimBoundsRect, bx);
             Canvas.SetTop(AnimBoundsRect, by);
             string bgDesc = isGreyed ? "greyed scene background" : "scene background";

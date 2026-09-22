@@ -132,9 +132,30 @@ public static class BatchExporter
             {
                 byte[] data = vfs.ReadBytes(file);
                 ImageInfo? info = file.Image;
-                DecodedImage image = info is not null
-                    ? RleMaskDecoder.Decode(data, info.Width, info.Height)
-                    : RleMaskDecoder.TryDecode(data)?.Image ?? throw new InvalidDataException("not an RLE mask");
+                int? sceneW = info?.Width;
+                int? sceneH = info?.Height;
+                if (sceneW is null)
+                {
+                    var bg = vfs.SceneBackgroundFor(file);
+                    if (bg is not null)
+                    {
+                        sceneW = bg.Width;
+                        sceneH = bg.Height;
+                    }
+                }
+                DecodedImage image;
+                if (SparseMaskDecoder.Detect(data, sceneW, sceneH) is { } sm)
+                {
+                    int w = sceneW ?? sm.Width;
+                    int h = sceneH ?? sm.Height;
+                    image = SparseMaskDecoder.Decode(data, w, h, colorSeed: file.EntryIndex);
+                }
+                else
+                {
+                    image = info is not null
+                        ? RleMaskDecoder.Decode(data, info.Width, info.Height)
+                        : RleMaskDecoder.TryDecode(data, idMap: null, sceneW, sceneH)?.Image ?? throw new InvalidDataException("not an RLE mask");
+                }
                 PngWriter.Write(image, path);
                 return BatchExportResult.Exported;
             }

@@ -136,6 +136,22 @@
                                         </StackPanel>
                                     </DockPanel>
                                 </Border>
+
+                                <!-- Runaway 3 -->
+                                <Border Classes="settingCard">
+                                    <DockPanel>
+                                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="12,0,0,0">
+                                            <Button Content="{DynamicResource Settings_Game_Browse}" Click="BrowseR3_Click"/>
+                                            <Button Content="{DynamicResource Settings_Game_Clear}" Click="ClearR3_Click"/>
+                                        </StackPanel>
+                                        <StackPanel>
+                                            <TextBlock Text="{DynamicResource Settings_Game_R3_Title}" Classes="settingTitle"/>
+                                            <TextBlock Text="{DynamicResource Settings_Game_R3_Subtitle}" Classes="settingSubtitle"/>
+                                            <TextBlock x:Name="R3PathText" Text="{DynamicResource Settings_Game_NotConfigured}"
+                                                       FontSize="11" Opacity="0.9" TextWrapping="Wrap" Margin="0,4,0,0" Foreground="{DynamicResource AccentFillColorDefaultBrush}"/>
+                                        </StackPanel>
+                                    </DockPanel>
+                                </Border>
                             </StackPanel>
 
                             <!-- Playback -->

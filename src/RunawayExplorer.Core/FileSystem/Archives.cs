@@ -115,7 +115,9 @@ public static class SceneArchive
         if (code.StartsWith("S", StringComparison.Ordinal) && code.Length == 3 && char.IsDigit(code[1]))
             return false;
         // Non-scene resource files
-        if (code is "000" or "002" or "003" or "004")
+        if (code is "000" or "003" or "004" or "005")
+            return false;
+        if (code == "002" && game != GameVersion.Runaway3)
             return false;
         if (code == "001" && game == GameVersion.Runaway1)
             return false;
@@ -286,6 +288,7 @@ public static class GlobalArchive
 /// <c>RESOURCE.004</c> -- lip-sync viseme tracks.
 /// Runaway 1: <c>{ u32 offset, u16 size }[6000]</c>, 36,000 bytes.
 /// Runaway 2: <c>{ u32 offset, u16 size, u8 flag }[10500]</c>, 73,500 bytes.
+/// Runaway 3: <c>{ u32 offset, u32 size }[11500]</c>, 92,000 bytes.
 /// </summary>
 public static class VisemeArchive
 {
@@ -298,14 +301,30 @@ public static class VisemeArchive
     public const int SlotCountR2 = 10500;
     public const int TableSizeR2 = SlotCountR2 * 7;
 
+    public const int SlotCountR3 = 11500;
+    public const int TableSizeR3 = SlotCountR3 * 8;
+
     public static List<ArchiveEntry> ReadEntries(ReadOnlySpan<byte> data, long fileLength)
     {
         var entries = new List<ArchiveEntry>();
         if (data.Length < TableSizeR1)
             return entries;
 
-        // Check if Runaway 2: first offset is 73,500
+        // Check if Runaway 3: first offset is 92,000
         uint firstOff = BinaryPrimitives.ReadUInt32LittleEndian(data);
+        if (firstOff == TableSizeR3 && data.Length >= TableSizeR3)
+        {
+            for (int i = 0; i < SlotCountR3; i++)
+            {
+                uint o = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(i * 8));
+                uint s = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(i * 8 + 4));
+                if (o != 0 && s != 0 && (long)o + s <= fileLength)
+                    entries.Add(new ArchiveEntry(i, o, s));
+            }
+            return entries;
+        }
+
+        // Check if Runaway 2: first offset is 73,500
         if (firstOff == TableSizeR2 && data.Length >= TableSizeR2)
         {
             for (int i = 0; i < SlotCountR2; i++)
@@ -332,7 +351,7 @@ public static class VisemeArchive
     {
         ArgumentNullException.ThrowIfNull(archive);
         archive.Position = 0;
-        var table = new byte[(int)Math.Min(archive.Length, TableSizeR2)];
+        var table = new byte[(int)Math.Min(archive.Length, TableSizeR3)];
         archive.ReadExactly(table);
         return ReadEntries(table, archive.Length);
     }
