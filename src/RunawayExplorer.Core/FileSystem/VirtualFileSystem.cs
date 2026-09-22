@@ -157,7 +157,7 @@ public sealed class VirtualFileSystem
         global.FriendlyName = SceneCatalog.GetCategoryTitle(GlobalFolder, activeLanguage);
 
         // Scene archives are the expensive part; classify them in parallel, then attach in name order.
-        List<string> sceneArchives = resourceFiles.Where(f => SceneArchive.IsSceneArchiveName(Path.GetFileName(f))).ToList();
+        List<string> sceneArchives = resourceFiles.Where(f => SceneArchive.IsSceneArchiveName(Path.GetFileName(f), gameVersion)).ToList();
         var sceneNodes = new FsNode?[sceneArchives.Count];
         int done = 0;
         bool anyFromCache = false;
@@ -204,7 +204,7 @@ public sealed class VirtualFileSystem
             string name = Path.GetFileName(path);
             string upper = name.ToUpperInvariant();
 
-            if (SceneArchive.IsSceneArchiveName(name))
+            if (SceneArchive.IsSceneArchiveName(name, gameVersion))
                 continue;
 
             if (upper.StartsWith("RESOURCE.M", StringComparison.Ordinal))
@@ -293,7 +293,7 @@ public sealed class VirtualFileSystem
             UpdateLanguageRecursive(child, language);
     }
 
-    private static (FsNode Node, bool FromCache) BuildSceneArchive(string path, ScanCache cache, string language, GameVersion gameVersion, CancellationToken cancellationToken)
+    internal static (FsNode Node, bool FromCache) BuildSceneArchive(string path, ScanCache cache, string language, GameVersion gameVersion, CancellationToken cancellationToken = default)
     {
         var node = new FsNode
         {

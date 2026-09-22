@@ -15,4 +15,8 @@
     <EmbeddedResource Include="Resources\shipped-scan-cache.json" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="RunawayExplorer.Core.Tests" />
+  </ItemGroup>
+
 </Project>

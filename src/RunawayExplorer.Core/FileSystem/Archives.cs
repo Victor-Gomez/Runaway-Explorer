@@ -99,7 +99,7 @@ public static class SceneArchive
     }
 
     /// <summary>True for scene archive names in Runaway 1 (e.g. RESOURCE.A00) and Runaway 2 (e.g. RESOURCE.B04A, RESOURCE.SP1).</summary>
-    public static bool IsSceneArchiveName(string fileName)
+    public static bool IsSceneArchiveName(string fileName, GameVersion game = GameVersion.Runaway1)
     {
         if (!Path.GetFileNameWithoutExtension(fileName).Equals("RESOURCE", StringComparison.OrdinalIgnoreCase))
             return false;
@@ -116,6 +116,8 @@ public static class SceneArchive
             return false;
         // Non-scene resource files
         if (code is "000" or "002" or "003" or "004")
+            return false;
+        if (code == "001" && game == GameVersion.Runaway1)
             return false;
 
         return true;

@@ -275,7 +275,8 @@ public class Runaway2ContainerTests
         Assert.True(SceneArchive.IsSceneArchiveName("RESOURCE.B04A"));
         Assert.True(SceneArchive.IsSceneArchiveName("RESOURCE.SP1"));
         Assert.True(SceneArchive.IsSceneArchiveName("RESOURCE.SP5"));
-        Assert.True(SceneArchive.IsSceneArchiveName("RESOURCE.001")); // R2 intro scene
+        Assert.True(SceneArchive.IsSceneArchiveName("RESOURCE.001", GameVersion.Runaway2)); // R2 intro scene
+        Assert.False(SceneArchive.IsSceneArchiveName("RESOURCE.001", GameVersion.Runaway1)); // R1 string data
         Assert.False(SceneArchive.IsSceneArchiveName("RESOURCE.000")); // Global archive
         Assert.False(SceneArchive.IsSceneArchiveName("RESOURCE.004")); // Viseme archive
         Assert.False(SceneArchive.IsSceneArchiveName("RESOURCE.M01"));
@@ -571,7 +572,7 @@ public class Runaway2ContainerTests
     {
         if (!Directory.Exists(R1SteamDir)) return;
 
-        var vfs = VirtualFileSystem.Init(R1SteamDir, cache: ScanCache.Ephemeral());
+        var vfs = VirtualFileSystem.Init(R1SteamDir, cache: ScanCache.Ephemeral(includeShipped: true));
         Assert.Equal(GameVersion.Runaway1, vfs.GameVersion);
         Assert.True(vfs.Summary.SceneArchives > 0);
         Assert.True(vfs.Summary.AudioClips > 0);
@@ -580,11 +581,89 @@ public class Runaway2ContainerTests
     }
 
     [Fact]
+    public void GenerateAndVerify_ShippedScanCache_IncludesRunaway2()
+    {
+        if (!Directory.Exists(R2SteamDir)) return;
+
+        // Locate repository root
+        string dir = AppContext.BaseDirectory;
+        while (!string.IsNullOrEmpty(dir) && !File.Exists(Path.Combine(dir, "RunawayExplorer.slnx")) && !Directory.Exists(Path.Combine(dir, ".git")))
+        {
+            dir = Path.GetDirectoryName(dir)!;
+        }
+        Assert.False(string.IsNullOrEmpty(dir), "Could not locate solution directory");
+
+        string shippedJsonPath = Path.Combine(dir, "src", "RunawayExplorer.Core", "Resources", "shipped-scan-cache.json");
+        Assert.True(File.Exists(shippedJsonPath), $"shipped-scan-cache.json not found at {shippedJsonPath}");
+
+        var options = new System.Text.Json.JsonSerializerOptions
+        {
+            WriteIndented = false,
+            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault,
+        };
+
+        var shipped = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, List<ScanCache.CachedEntry>>>(
+            File.ReadAllText(shippedJsonPath), options) ?? new(StringComparer.OrdinalIgnoreCase);
+
+        int initialCount = shipped.Count;
+        Assert.True(initialCount >= 75, $"Expected at least 75 R1 hashes in shipped cache, found {initialCount}");
+
+        string resDir = Path.Combine(R2SteamDir, "Resource");
+        if (!Directory.Exists(resDir))
+            resDir = R2SteamDir;
+
+        var sceneFiles = Directory.GetFiles(resDir)
+            .Where(f => SceneArchive.IsSceneArchiveName(Path.GetFileName(f), GameVersion.Runaway2))
+            .ToList();
+
+        Assert.True(sceneFiles.Count >= 70, $"Expected >= 70 R2 scene archives, found {sceneFiles.Count}");
+
+        var newHashes = new System.Collections.Concurrent.ConcurrentDictionary<string, List<ScanCache.CachedEntry>>(StringComparer.OrdinalIgnoreCase);
+
+        var parallelOptions = new ParallelOptions
+        {
+            MaxDegreeOfParallelism = Math.Clamp(Environment.ProcessorCount / 2, 2, 8)
+        };
+
+        Parallel.ForEach(sceneFiles, parallelOptions, file =>
+        {
+            string hash = ScanCache.ComputeHash(file);
+            if (shipped.ContainsKey(hash))
+                return;
+
+            var localCache = ScanCache.Ephemeral(includeShipped: false);
+            VirtualFileSystem.BuildSceneArchive(file, localCache, "en", GameVersion.Runaway2);
+            var entries = localCache.TryGet(file);
+            if (entries is not null && entries.Count > 0)
+            {
+                newHashes[hash] = entries;
+            }
+        });
+
+        int added = 0;
+        foreach (var (h, entries) in newHashes)
+        {
+            if (!shipped.ContainsKey(h))
+            {
+                shipped[h] = entries;
+                added++;
+            }
+        }
+
+        if (added > 0)
+        {
+            File.WriteAllText(shippedJsonPath, System.Text.Json.JsonSerializer.Serialize(shipped, options));
+        }
+
+        Assert.True(shipped.Count >= 75 + 70, $"Expected >= 145 total hashes after R2 merge, found {shipped.Count}");
+    }
+
+    [Fact]
     public void RealInstall_Runaway2_LoadsCompleteVfs()
     {
         if (!Directory.Exists(R2SteamDir)) return;
 
-        var vfs = VirtualFileSystem.Init(R2SteamDir, cache: ScanCache.Ephemeral());
+        var vfs = VirtualFileSystem.Init(R2SteamDir, cache: ScanCache.Ephemeral(includeShipped: true));
         Assert.Equal(GameVersion.Runaway2, vfs.GameVersion);
         Assert.True(vfs.Summary.SceneArchives >= 70);
         Assert.True(vfs.Summary.AudioClips > 0);
