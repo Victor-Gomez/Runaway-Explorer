@@ -55,3 +55,4 @@ TestResult.xml
 nunit-*.xml
 CLAUDE.md
 AGENTS.md
+/cover

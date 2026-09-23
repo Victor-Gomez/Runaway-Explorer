@@ -1,4 +1,4 @@
-<p align="center"><img src="docs/artwork.png" width="320" alt="Runaway Explorer"></p>
+<p align="center"><img src="docs/artwork.png" alt="Runaway Explorer"></p>
 
 # Runaway Explorer
 
@@ -7,7 +7,6 @@ A cross-platform viewer for the game assets of the *Runaway* trilogy by Pendulo 
 - **Runaway 2: The Dream of the Turtle** (2006)
 - **Runaway: A Twist of Fate** (2009)
 
-created by [Victor Gomez](https://github.com/Victor-Gomez).
 Point it at an install for any of the three games (or configure all three in Settings) and browse every scene background, overlay, sprite animation, music track,
 sound effect, voice line, lip-sync track and cutscene -- and export any of them.
 
