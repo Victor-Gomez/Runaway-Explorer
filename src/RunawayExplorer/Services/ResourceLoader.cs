@@ -26,6 +26,18 @@ public static class ResourceLoader
                 case EntryKind.Background:
                 {
                     byte[] data = vfs.ReadBytes(node);
+                    if (PngDecoder.IsPng(data))
+                    {
+                        if (PngDecoder.Decode(data) is { } pngImg)
+                            return new ImageResource(pngImg, 0, 0, false, "background");
+                        return new ErrorResource($"'{node.GetPath()}' failed to decode as PNG.");
+                    }
+                    if (JpegDecoder.IsJpeg(data))
+                    {
+                        if (JpegDecoder.Decode(data) is { } jpgImg)
+                            return new ImageResource(jpgImg, 0, 0, false, "background");
+                        return new ErrorResource($"'{node.GetPath()}' failed to decode as JPEG.");
+                    }
                     ImageInfo? info = node.Image;
                     if (info is null || info.Width * info.Height * 2 != data.Length)
                     {
@@ -41,6 +53,12 @@ public static class ResourceLoader
                 case EntryKind.Mask:
                 {
                     byte[] data = vfs.ReadBytes(node);
+                    if (PngDecoder.IsPng(data))
+                    {
+                        if (PngDecoder.Decode(data) is { } pngImg)
+                            return new ImageResource(pngImg, node.Image?.X ?? 0, node.Image?.Y ?? 0, true, "mask layer");
+                        return new ErrorResource($"'{node.GetPath()}' failed to decode as PNG mask.");
+                    }
                     byte[]? table1536 = vfs.SceneAttributeTableFor(node);
                     byte[]? idMap = table1536 is not null ? RleMaskDecoder.ExtractObjectMapping(table1536) : null;
                     ImageInfo? info = node.Image;
@@ -84,6 +102,25 @@ public static class ResourceLoader
                 case EntryKind.Overlay:
                 {
                     byte[] data = vfs.ReadBytes(node);
+                    if (PngDecoder.IsPng(data))
+                    {
+                        if (PngDecoder.Decode(data) is { } pngImg)
+                        {
+                            bool hasBg = vfs.SceneBackgroundFor(node) is not null;
+                            int x = node.Image?.X ?? 0;
+                            int y = node.Image?.Y ?? 0;
+                            bool positioned = hasBg || x != 0 || y != 0;
+                            string kind = positioned ? "overlay" : "sprite";
+                            return new ImageResource(pngImg, x, y, positioned, kind);
+                        }
+                        return new ErrorResource($"'{node.GetPath()}' failed to decode as PNG.");
+                    }
+                    if (JpegDecoder.IsJpeg(data))
+                    {
+                        if (JpegDecoder.Decode(data) is { } jpgImg)
+                            return new ImageResource(jpgImg, node.Image?.X ?? 0, node.Image?.Y ?? 0, true, "overlay");
+                        return new ErrorResource($"'{node.GetPath()}' failed to decode as JPEG.");
+                    }
                     if (SpriteAsset.Parse(data) is { } sprite1)
                     {
                         var frame = sprite1.DecodeFrame(0);

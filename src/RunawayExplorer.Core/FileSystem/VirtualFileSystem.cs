@@ -124,7 +124,7 @@ public sealed class VirtualFileSystem
         string? datavDir = FindDir(baseDir, "Datav");
 
         VideoKeyfile? keyfile = null;
-        if (datavDir is not null && gameVersion != GameVersion.Runaway3)
+        if (datavDir is not null && gameVersion is GameVersion.Runaway1 or GameVersion.Runaway2)
         {
             string? keyPath = Directory.EnumerateFiles(datavDir).FirstOrDefault(f => VideoKeyfile.IsKeyfileName(Path.GetFileName(f)));
             if (keyPath is not null)
@@ -139,7 +139,7 @@ public sealed class VirtualFileSystem
             Language = activeLanguage
         };
 
-        string[] resourceFiles = Directory.GetFiles(resourceDir);
+        string[] resourceFiles = Directory.GetFiles(resourceDir, "*", SearchOption.AllDirectories);
         Array.Sort(resourceFiles, StringComparer.OrdinalIgnoreCase);
 
         FsNode scenes = Folder(root, ScenesFolder);
@@ -223,7 +223,7 @@ public sealed class VirtualFileSystem
                 progress?.Invoke($"Reading {name}");
                 summary.AudioClips += Attach(ambient, BuildAudioArchive(path, EntryKind.Ambient, AmbientPcm, dedupe: false, activeLanguage, gameVersion)).Children.Count;
             }
-            else if (upper == "RESOURCE.002" && gameVersion != GameVersion.Runaway3)
+            else if (upper == "RESOURCE.002" && gameVersion is GameVersion.Runaway1 or GameVersion.Runaway2)
             {
                 progress?.Invoke($"Reading {name}");
                 summary.AudioClips += Attach(cinematic, BuildAudioArchive(path, EntryKind.Cinematic, CinematicPcm, dedupe: true, activeLanguage, gameVersion)).Children.Count;
@@ -233,7 +233,7 @@ public sealed class VirtualFileSystem
                 progress?.Invoke($"Reading {name}");
                 summary.Visemes += Attach(lipSync, BuildVisemeArchive(path)).Children.Count;
             }
-            else if (upper == "RESOURCE.003" && (gameVersion == GameVersion.Runaway2 || gameVersion == GameVersion.Runaway3))
+            else if (upper == "RESOURCE.003" && gameVersion != GameVersion.Runaway1)
             {
                 progress?.Invoke($"Reading {name}");
                 var (dNode, dTranscripts) = BuildPhraseArchive(path, gameVersion);
@@ -391,7 +391,7 @@ public sealed class VirtualFileSystem
                     EntryClassification c;
                     try
                     {
-                        c = EntryClassifier.Classify(buffer, sceneWidth, sceneHeight);
+                        c = EntryClassifier.Classify(buffer, sceneWidth, sceneHeight, gameVersion);
                     }
                     catch (Exception)
                     {
@@ -620,6 +620,70 @@ public sealed class VirtualFileSystem
 
     private static int BuildVoice(FsNode voice, string dataaDir, GameVersion gameVersion, Dictionary<int, string>? transcripts = null)
     {
+        if (gameVersion is GameVersion.TheNextBigThing or GameVersion.Yesterday)
+        {
+            var dataaFiles = Directory.EnumerateFiles(dataaDir, "DATAA*.000", SearchOption.AllDirectories).OrderBy(f => f).ToList();
+            if (dataaFiles.Count == 0)
+                return 0;
+
+            var clips = new SortedDictionary<int, VoiceArchive.VoiceClip>();
+            foreach (string file in dataaFiles)
+            {
+                var fileClips = VoiceArchive.ReadNamedArchiveClips(file);
+                foreach (var kvp in fileClips)
+                {
+                    if (!clips.ContainsKey(kvp.Key))
+                        clips[kvp.Key] = kvp.Value;
+                }
+            }
+
+            if (clips.Count == 0)
+                return 0;
+
+            var groups = new Dictionary<int, FsNode>();
+            var voiceMp3 = new AudioInfo { Format = AudioFormat.Mp3, SampleRate = 44_100, Channels = 1, BitsPerSample = 16 };
+
+            foreach (VoiceArchive.VoiceClip clip in clips.Values)
+            {
+                int g = clip.Index / VoiceGroupSize;
+                if (!groups.TryGetValue(g, out FsNode? group))
+                {
+                    int lo = g * VoiceGroupSize;
+                    group = new FsNode
+                    {
+                        NodeType = FsNodeType.Directory,
+                        Name = $"{lo:00000}-{lo + VoiceGroupSize - 1:00000}",
+                    };
+                    groups[g] = group;
+                    Attach(voice, group);
+                }
+
+                var node = new FsNode
+                {
+                    NodeType = FsNodeType.File | FsNodeType.InArchive,
+                    Kind = EntryKind.Voice,
+                    Name = $"VOICE_{clip.Index:00000}",
+                    Offset = clip.Offset,
+                    Size = clip.Size,
+                    EntryIndex = clip.Index,
+                    ArchivePath = clip.ShardPath,
+                    Audio = voiceMp3,
+                };
+                if (transcripts is not null && transcripts.TryGetValue(clip.Index, out string? sub) && !string.IsNullOrEmpty(sub))
+                {
+                    node.Subtitle = sub;
+                    string preview = sub.Length > 35 ? sub[..32] + "..." : sub;
+                    node.FriendlyName = $"{node.Name}  \"{preview}\"";
+                }
+                else
+                {
+                    node.FriendlyName = $"{node.Name}  {FormatDuration(VoicePcm.DurationSeconds(clip.Size))}";
+                }
+                Attach(group, node);
+            }
+            return clips.Count;
+        }
+
         if (gameVersion is GameVersion.Runaway2 or GameVersion.Runaway3)
         {
             string? dataaa = Directory.EnumerateFiles(dataaDir)
@@ -732,12 +796,12 @@ public sealed class VirtualFileSystem
         foreach (string path in files)
         {
             string name = Path.GetFileName(path);
-            if (gameVersion != GameVersion.Runaway3 && VideoKeyfile.IsKeyfileName(name))
+            bool isPlainBink = gameVersion is GameVersion.Runaway3 or GameVersion.TheNextBigThing or GameVersion.Yesterday;
+            if (!isPlainBink && VideoKeyfile.IsKeyfileName(name))
                 continue;
 
             var fi = new FileInfo(path);
-            bool isR3 = gameVersion == GameVersion.Runaway3;
-            bool restorable = isR3 || keyfile?.HeaderFor(name) is not null;
+            bool restorable = isPlainBink || keyfile?.HeaderFor(name) is not null;
             Attach(video, new FsNode
             {
                 NodeType = FsNodeType.File,
@@ -883,7 +947,12 @@ public sealed class VirtualFileSystem
         if (entry0?.Image is { } info)
         {
             byte[] bytes = ReadBytes(entry0);
-            image = RasterDecoder.Decode(bytes, info.Width, info.Height);
+            if (PngDecoder.IsPng(bytes))
+                image = PngDecoder.Decode(bytes);
+            else if (JpegDecoder.IsJpeg(bytes))
+                image = JpegDecoder.Decode(bytes);
+            else
+                image = RasterDecoder.Decode(bytes, info.Width, info.Height);
         }
 
         lock (_backgroundGate)
@@ -933,7 +1002,7 @@ public sealed class VirtualFileSystem
         if (node.Kind != EntryKind.Video || node.ArchivePath is null)
             return false;
 
-        if (GameVersion == GameVersion.Runaway3 || Keyfile is null)
+        if (GameVersion is GameVersion.Runaway3 or GameVersion.TheNextBigThing or GameVersion.Yesterday || Keyfile is null)
         {
             using FileStream src = File.OpenRead(node.ArchivePath);
             src.CopyTo(output);

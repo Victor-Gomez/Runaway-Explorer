@@ -66,4 +66,29 @@ public static class BitmapConverter
 
         return wb;
     }
+
+    /// <summary>Decodes a PNG byte array into a <see cref="DecodedImage"/>.</summary>
+    public static DecodedImage? FromPng(byte[] pngBytes)
+    {
+        try
+        {
+            using var ms = new System.IO.MemoryStream(pngBytes);
+            using var bmp = new Bitmap(ms);
+            int w = bmp.PixelSize.Width;
+            int h = bmp.PixelSize.Height;
+            var pixels = new byte[w * h * 4];
+            unsafe
+            {
+                fixed (byte* ptr = pixels)
+                {
+                    bmp.CopyPixels(new PixelRect(0, 0, w, h), (IntPtr)ptr, pixels.Length, w * 4);
+                }
+            }
+            return new DecodedImage(w, h, pixels);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
 }

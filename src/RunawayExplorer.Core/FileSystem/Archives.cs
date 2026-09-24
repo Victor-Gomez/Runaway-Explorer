@@ -115,7 +115,7 @@ public static class SceneArchive
         if (code.StartsWith("S", StringComparison.Ordinal) && code.Length == 3 && char.IsDigit(code[1]))
             return false;
         // Non-scene resource files
-        if (code is "000" or "003" or "004" or "005")
+        if (code is "000" or "003" or "004" or "005" or "TAB" or "IFZ" or "DIS" or "CRD" or "FNT" or "PSE")
             return false;
         if (code == "002" && game != GameVersion.Runaway3)
             return false;
@@ -422,6 +422,57 @@ public static class VoiceArchive
         ArgumentNullException.ThrowIfNull(dataaaPath);
         using FileStream f = File.OpenRead(dataaaPath);
         return ReadSingleArchiveClips(f, dataaaPath);
+    }
+
+    /// <summary>Reads voice clips from a 49-byte record archive (The Next BIG Thing / Yesterday <c>DATAA*.000</c>).</summary>
+    public static SortedDictionary<int, VoiceClip> ReadNamedArchiveClips(Stream stream, string sourcePath = "")
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+        var clips = new SortedDictionary<int, VoiceClip>();
+        Span<byte> head = stackalloc byte[8];
+        stream.Position = 0;
+        if (stream.Read(head) < 8)
+            return clips;
+
+        uint count = BinaryPrimitives.ReadUInt32LittleEndian(head);
+        uint firstOff = BinaryPrimitives.ReadUInt32LittleEndian(head.Slice(4));
+        const int recordSize = 49;
+        if (count == 0 || count > 100_000 || firstOff != 4 + count * recordSize)
+            return clips;
+
+        var table = new byte[count * recordSize];
+        stream.Position = 4;
+        stream.ReadExactly(table);
+
+        for (int i = 0; i < count; i++)
+        {
+            int p = i * recordSize;
+            uint off = BinaryPrimitives.ReadUInt32LittleEndian(table.AsSpan(p));
+            uint size = BinaryPrimitives.ReadUInt32LittleEndian(table.AsSpan(p + 4));
+            if (off > 0 && size > 0 && (long)off + size <= stream.Length)
+            {
+                // Parse integer clip ID from UTF-16 filename (e.g. "00001000.mp3" -> 1000)
+                int clipIndex = i;
+                string rawName = System.Text.Encoding.Unicode.GetString(table.AsSpan(p + 9, 40));
+                int nul = rawName.IndexOf('\0');
+                if (nul >= 0) rawName = rawName[..nul];
+                int dot = rawName.IndexOf('.');
+                string idStr = dot >= 0 ? rawName[..dot] : rawName;
+                if (int.TryParse(idStr, out int parsedId))
+                    clipIndex = parsedId;
+
+                clips[clipIndex] = new VoiceClip(clipIndex, sourcePath, off, size);
+            }
+        }
+        return clips;
+    }
+
+    /// <summary>Reads voice clips from a 49-byte record archive file.</summary>
+    public static SortedDictionary<int, VoiceClip> ReadNamedArchiveClips(string dataaPath)
+    {
+        ArgumentNullException.ThrowIfNull(dataaPath);
+        using FileStream f = File.OpenRead(dataaPath);
+        return ReadNamedArchiveClips(f, dataaPath);
     }
 
     /// <summary>

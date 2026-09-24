@@ -21,12 +21,20 @@ public sealed class AppSettings
     /// <summary>The installation folder for Runaway: A Twist of Fate.</summary>
     public string? Runaway3Dir { get; set; }
 
+    /// <summary>The installation folder for The Next BIG Thing.</summary>
+    public string? TheNextBigThingDir { get; set; }
+
+    /// <summary>The installation folder for Yesterday.</summary>
+    public string? YesterdayDir { get; set; }
+
     /// <summary>The currently active game.</summary>
     public GameVersion ActiveGame { get; set; } = GameVersion.Runaway1;
 
     /// <summary>Gets the configured install directory for the specified game version.</summary>
     public string? GetGameDir(GameVersion game) => game switch
     {
+        GameVersion.Yesterday => YesterdayDir,
+        GameVersion.TheNextBigThing => TheNextBigThingDir,
         GameVersion.Runaway3 => Runaway3Dir,
         GameVersion.Runaway2 => Runaway2Dir,
         _ => Runaway1Dir,
@@ -35,7 +43,11 @@ public sealed class AppSettings
     /// <summary>Sets the install directory for the specified game version.</summary>
     public void SetGameDir(GameVersion game, string? path)
     {
-        if (game == GameVersion.Runaway3)
+        if (game == GameVersion.Yesterday)
+            YesterdayDir = path;
+        else if (game == GameVersion.TheNextBigThing)
+            TheNextBigThingDir = path;
+        else if (game == GameVersion.Runaway3)
             Runaway3Dir = path;
         else if (game == GameVersion.Runaway2)
             Runaway2Dir = path;
@@ -172,14 +184,18 @@ public sealed class AppSettings
             var settings = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path), SerializerOptions);
             if (settings is not null)
             {
-                if (string.IsNullOrWhiteSpace(settings.Runaway1Dir) && string.IsNullOrWhiteSpace(settings.Runaway2Dir) && string.IsNullOrWhiteSpace(settings.Runaway3Dir))
+                if (string.IsNullOrWhiteSpace(settings.Runaway1Dir) && string.IsNullOrWhiteSpace(settings.Runaway2Dir) && string.IsNullOrWhiteSpace(settings.Runaway3Dir) && string.IsNullOrWhiteSpace(settings.TheNextBigThingDir) && string.IsNullOrWhiteSpace(settings.YesterdayDir))
                 {
                     foreach (string candidate in settings.RecentInstalls)
                     {
                         if (Directory.Exists(candidate))
                         {
                             GameVersion v = GameDetector.Detect(candidate);
-                            if (v == GameVersion.Runaway3 && string.IsNullOrWhiteSpace(settings.Runaway3Dir))
+                            if (v == GameVersion.Yesterday && string.IsNullOrWhiteSpace(settings.YesterdayDir))
+                                settings.YesterdayDir = candidate;
+                            else if (v == GameVersion.TheNextBigThing && string.IsNullOrWhiteSpace(settings.TheNextBigThingDir))
+                                settings.TheNextBigThingDir = candidate;
+                            else if (v == GameVersion.Runaway3 && string.IsNullOrWhiteSpace(settings.Runaway3Dir))
                                 settings.Runaway3Dir = candidate;
                             else if (v == GameVersion.Runaway2 && string.IsNullOrWhiteSpace(settings.Runaway2Dir))
                                 settings.Runaway2Dir = candidate;

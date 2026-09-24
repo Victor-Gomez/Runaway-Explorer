@@ -260,6 +260,36 @@ public class BatchExporterTests
         Assert.Equal(written, files.Length);
     }
 
+    [Fact]
+    public void ResourceLoader_LoadsPngAndJpegBackgrounds()
+    {
+        using var install = new FakeInstall();
+        VirtualFileSystem vfs = VirtualFileSystem.Init(install.Root);
+        var settings = new AppSettings();
+        var temp = new TempFileTracker();
+
+        // Synthetic PNG background
+        var decoded = new DecodedImage(4, 4, new byte[4 * 4 * 4]);
+        byte[] pngBytes = PngWriter.ToBytes(decoded);
+        string pngFile = Path.Combine(install.Root, "test_bg.png");
+        File.WriteAllBytes(pngFile, pngBytes);
+
+        var pngNode = new FsNode
+        {
+            Name = "e00",
+            Kind = EntryKind.Background,
+            ArchivePath = pngFile,
+            Offset = 0,
+            Size = pngBytes.Length,
+            NodeType = FsNodeType.File,
+            Image = new ImageInfo { Width = 4, Height = 4 }
+        };
+
+        var pngRes = Assert.IsType<ImageResource>(ResourceLoader.Load(pngNode, vfs, settings, temp));
+        Assert.Equal(4, pngRes.Image.Width);
+        Assert.Equal(4, pngRes.Image.Height);
+    }
+
     private static int IndexOf(byte[] haystack, ReadOnlySpan<byte> needle)
     {
         for (int i = 0; i + needle.Length <= haystack.Length; i++)

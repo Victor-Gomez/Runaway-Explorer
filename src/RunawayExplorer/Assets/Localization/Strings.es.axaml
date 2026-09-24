@@ -100,6 +100,10 @@
     <x:String x:Key="Settings_Game_R2_Subtitle">Carpeta que contiene RunawayTDOTT.exe y Resource/.</x:String>
     <x:String x:Key="Settings_Game_R3_Title">Carpeta de Runaway: A Twist of Fate</x:String>
     <x:String x:Key="Settings_Game_R3_Subtitle">Carpeta que contiene RATOF.exe y Resource/.</x:String>
+    <x:String x:Key="Settings_Game_TNBT_Title">Carpeta de The Next BIG Thing</x:String>
+    <x:String x:Key="Settings_Game_TNBT_Subtitle">Carpeta que contiene The Next Big Thing.exe y Resource/.</x:String>
+    <x:String x:Key="Settings_Game_Yesterday_Title">Carpeta de Yesterday</x:String>
+    <x:String x:Key="Settings_Game_Yesterday_Subtitle">Carpeta que contiene Yesterday.exe y Resource/.</x:String>
     <x:String x:Key="Settings_Game_NotConfigured">No configurada</x:String>
     <x:String x:Key="Settings_Game_Browse">Examinar...</x:String>
     <x:String x:Key="Settings_Game_Clear">Borrar</x:String>

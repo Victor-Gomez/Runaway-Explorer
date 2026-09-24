@@ -100,6 +100,10 @@
     <x:String x:Key="Settings_Game_R2_Subtitle">Folder containing RunawayTDOTT.exe and Resource/.</x:String>
     <x:String x:Key="Settings_Game_R3_Title">Runaway: A Twist of Fate folder</x:String>
     <x:String x:Key="Settings_Game_R3_Subtitle">Folder containing RATOF.exe and Resource/.</x:String>
+    <x:String x:Key="Settings_Game_TNBT_Title">The Next BIG Thing folder</x:String>
+    <x:String x:Key="Settings_Game_TNBT_Subtitle">Folder containing The Next Big Thing.exe and Resource/.</x:String>
+    <x:String x:Key="Settings_Game_Yesterday_Title">Yesterday folder</x:String>
+    <x:String x:Key="Settings_Game_Yesterday_Subtitle">Folder containing Yesterday.exe and Resource/.</x:String>
     <x:String x:Key="Settings_Game_NotConfigured">Not configured</x:String>
     <x:String x:Key="Settings_Game_Browse">Browse...</x:String>
     <x:String x:Key="Settings_Game_Clear">Clear</x:String>

@@ -289,4 +289,23 @@ public class RleMaskDecoderTests
         Assert.Equal(255, allImg.Pixels[2 * 4 + 3]);
         Assert.Equal(255, allImg.Pixels[3 * 4 + 3]);
     }
+
+    [Fact]
+    public void Decode_WithoutAttributeTable_TogglesWalkMaskOff()
+    {
+        // 4 pixels: ID 1 (run of 4)
+        byte[] data = [1, 4, 0];
+
+        // Walk on -> pixels are opaque
+        var walkOn = RleMaskDecoder.Decode(data, 4, 1, layers: MaskLayers.Walk, transparentBackground: true);
+        Assert.Equal(255, walkOn.Pixels[0 * 4 + 3]);
+
+        // Walk off -> pixels are transparent
+        var walkOff = RleMaskDecoder.Decode(data, 4, 1, layers: MaskLayers.None, transparentBackground: true);
+        Assert.Equal(0, walkOff.Pixels[0 * 4 + 3]);
+
+        // If layers has only Hotspot (Walk toggled off) -> pixels are transparent
+        var hotspotOnly = RleMaskDecoder.Decode(data, 4, 1, layers: MaskLayers.Hotspot, transparentBackground: true);
+        Assert.Equal(0, hotspotOnly.Pixels[0 * 4 + 3]);
+    }
 }

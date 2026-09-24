@@ -498,6 +498,11 @@ public static class SceneCatalog
 
             case EntryKind.Overlay when img is not null:
             {
+                if (img.X == 0 && img.Y == 0)
+                {
+                    string spriteDesc = es ? "capa" : "sprite";
+                    return $"{spriteDesc} {img.Width}×{img.Height} ({entry.Name})";
+                }
                 string desc = es ? "capa" : "overlay";
                 string at = es ? "en" : "at";
                 return $"{desc} {img.Width}×{img.Height} {at} {img.X},{img.Y} ({entry.Name})";

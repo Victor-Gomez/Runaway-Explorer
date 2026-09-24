@@ -3,7 +3,7 @@ using System.Buffers.Binary;
 namespace RunawayExplorer.Core.Formats;
 
 /// <summary>Result of <see cref="RleMaskDecoder.Detect"/>: geometry and statistics of an RLE scene mask.</summary>
-public readonly record struct MaskInfo(int Width, int Height, int RunCount, int UniqueIdCount);
+public readonly record struct MaskInfo(int Width, int Height, int RunCount, int UniqueIdCount, int RunBytes = 3);
 
 /// <summary>
 /// Bitflags specifying which functional mask layers to decode or display.
@@ -27,7 +27,7 @@ public readonly record struct MaskAttributePresence(bool HasWalk, bool HasHotspo
 
 /// <summary>
 /// Decoder for scene-archive RLE mask entries (e.g. entry 1 across 18 scene archives).
-/// Stored as a stream of 3-byte records: { u8 id, u16 length_little_endian }.
+/// Stored as a stream of 3-byte ({ u8 id, u16 len }) or 4-byte ({ u16 id, u16 len }) records.
 /// Runs are scanline-bounded and sum to exactly the scene width per row.
 /// </summary>
 public static class RleMaskDecoder
@@ -42,23 +42,37 @@ public static class RleMaskDecoder
     /// </summary>
     public static MaskInfo? Detect(ReadOnlySpan<byte> data, int? sceneWidth = null, int? sceneHeight = null)
     {
-        if (data.Length < 6 || data.Length % 3 != 0)
+        if (data.Length < 6)
             return null;
 
         if (sceneWidth.HasValue && sceneWidth.Value > 0)
         {
-            if (DetectWithWidth(data, sceneWidth.Value) is { } matchW)
+            if (data.Length % 4 == 0 && DetectWithWidth(data, sceneWidth.Value, 4) is { } m4)
+                return m4;
+            if (data.Length % 3 == 0 && DetectWithWidth(data, sceneWidth.Value, 3) is { } matchW)
                 return matchW;
         }
 
-        foreach (int w in CandidateWidths)
+        if (data.Length % 4 == 0)
         {
-            if (DetectWithWidth(data, w) is { } info)
-                return info;
+            foreach (int w in CandidateWidths)
+            {
+                if (DetectWithWidth(data, w, 4) is { } info)
+                    return info;
+            }
         }
 
-        if (DetectContinuous(data, sceneWidth, sceneHeight) is { } continuousInfo)
-            return continuousInfo;
+        if (data.Length % 3 == 0)
+        {
+            foreach (int w in CandidateWidths)
+            {
+                if (DetectWithWidth(data, w, 3) is { } info)
+                    return info;
+            }
+
+            if (DetectContinuous(data, sceneWidth, sceneHeight) is { } continuousInfo)
+                return continuousInfo;
+        }
 
         return null;
     }
@@ -143,29 +157,41 @@ public static class RleMaskDecoder
     /// <summary>
     /// Tests whether the RLE stream partitions into exact rows of <paramref name="width"/> pixels.
     /// </summary>
-    public static MaskInfo? DetectWithWidth(ReadOnlySpan<byte> data, int width)
+    public static MaskInfo? DetectWithWidth(ReadOnlySpan<byte> data, int width, int runBytes = 3)
     {
-        if (data.Length < 6 || data.Length % 3 != 0 || width <= 0)
+        if (data.Length < runBytes * 2 || data.Length % runBytes != 0 || width <= 0)
             return null;
 
         int pos = 0;
         int curRowPx = 0;
         int rowCount = 0;
         int runCount = 0;
-        Span<bool> seenIds = stackalloc bool[256];
         int uniqueIds = 0;
+        Span<bool> seenIds = stackalloc bool[256];
+        HashSet<int>? extraIds = null;
 
-        while (pos + 3 <= data.Length)
+        while (pos + runBytes <= data.Length)
         {
-            byte id = data[pos];
-            ushort len = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(pos + 1, 2));
-            pos += 3;
+            int id = runBytes == 4
+                ? BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(pos, 2))
+                : data[pos];
+            ushort len = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(pos + (runBytes - 2), 2));
+            pos += runBytes;
             runCount++;
 
-            if (!seenIds[id])
+            if (id < 256)
             {
-                seenIds[id] = true;
-                uniqueIds++;
+                if (!seenIds[id])
+                {
+                    seenIds[id] = true;
+                    uniqueIds++;
+                }
+            }
+            else
+            {
+                extraIds ??= [];
+                if (extraIds.Add(id))
+                    uniqueIds++;
             }
 
             if (len == 0 || len > width)
@@ -186,7 +212,7 @@ public static class RleMaskDecoder
         if (curRowPx != 0 || rowCount < 10 || uniqueIds < 2)
             return null;
 
-        return new MaskInfo(width, rowCount, runCount, uniqueIds);
+        return new MaskInfo(width, rowCount, runCount, uniqueIds, runBytes);
     }
 
     /// <summary>
@@ -270,7 +296,8 @@ public static class RleMaskDecoder
         int height,
         byte[]? idMap = null,
         byte[]? table1536 = null,
-        MaskLayers layers = MaskLayers.All)
+        MaskLayers layers = MaskLayers.All,
+        bool transparentBackground = false)
     {
         var pixels = new byte[width * height * 4];
         if (layers == MaskLayers.None)
@@ -302,14 +329,23 @@ public static class RleMaskDecoder
 
         // Precompute a 256-entry lookup table for the active layer configuration
         var lut = new (byte B, byte G, byte R, byte A)[256];
-        lut[0] = hasTable ? ((byte)0, (byte)0, (byte)0, (byte)0) : defaultPalette[0];
+        lut[0] = (hasTable || layers != MaskLayers.All || !showWalk || transparentBackground)
+            ? ((byte)0, (byte)0, (byte)0, (byte)0)
+            : defaultPalette[0];
 
         for (int id = 1; id < 256; id++)
         {
             if (!hasTableAttributes)
             {
-                byte displayId = idMap is not null ? idMap[id] : (byte)id;
-                lut[id] = defaultPalette[displayId];
+                if (showWalk)
+                {
+                    byte displayId = idMap is not null ? idMap[id] : (byte)id;
+                    lut[id] = defaultPalette[displayId];
+                }
+                else
+                {
+                    lut[id] = ((byte)0, (byte)0, (byte)0, (byte)0);
+                }
                 continue;
             }
 
@@ -362,18 +398,21 @@ public static class RleMaskDecoder
             }
         }
 
+        int runBytes = (data.Length % 4 == 0 && (data.Length % 3 != 0 || width >= 1920)) ? 4 : 3;
         int pos = 0;
         int pxIndex = 0;
         int totalPx = width * height;
 
-        while (pos + 3 <= data.Length && pxIndex < totalPx)
+        while (pos + runBytes <= data.Length && pxIndex < totalPx)
         {
-            byte id = data[pos];
-            ushort len = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(pos + 1, 2));
-            pos += 3;
+            int id = runBytes == 4
+                ? BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(pos, 2))
+                : data[pos];
+            ushort len = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(pos + (runBytes - 2), 2));
+            pos += runBytes;
 
             int count = Math.Min((int)len, totalPx - pxIndex);
-            (byte b, byte g, byte r, byte a) = lut[id];
+            (byte b, byte g, byte r, byte a) = lut[id % 256];
 
             if (a > 0)
             {

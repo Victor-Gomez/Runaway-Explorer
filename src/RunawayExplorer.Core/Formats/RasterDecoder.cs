@@ -38,7 +38,7 @@ public static class RasterDecoder
     /// </summary>
     public static RasterInfo? Detect(ReadOnlySpan<byte> data)
     {
-        if (data.Length < MinBytes || data.Length % 2 != 0)
+        if (data.Length < MinBytes || data.Length > 8_500_000 || data.Length % 2 != 0)
             return null;
 
         int total = data.Length / 2;

@@ -107,4 +107,59 @@ public class MainWindowTests : UiTestBase
         Assert.False(childVm.IsExpanded);
         Assert.False(grandChildVm.IsExpanded);
     }
+
+    [AvaloniaFact]
+    public void SceneOverlays_LayeringAndToggling()
+    {
+        MainWindow window = Show(new MainWindow());
+        var stage = window.FindControl<Canvas>("ImageStage")!;
+        var previewImage = window.FindControl<Image>("PreviewImage")!;
+        var overlayLayer = window.FindControl<Canvas>("SceneOverlayLayer")!;
+        var maskImage = window.FindControl<Image>("SceneMaskImage")!;
+
+        // Overlays must be above the preview/background image
+        Assert.True(overlayLayer.ZIndex > previewImage.ZIndex);
+        Assert.True(maskImage.ZIndex > previewImage.ZIndex);
+
+        // Test SceneOverlayItem toggle
+        var dummyImg = new Image();
+        var item = new ViewModels.SceneOverlayItem
+        {
+            DisplayName = "e01 overlay",
+            OverlayBitmap = new Avalonia.Media.Imaging.WriteableBitmap(new PixelSize(10, 10), new Vector(96, 96), Avalonia.Platform.PixelFormat.Bgra8888, Avalonia.Platform.AlphaFormat.Premul),
+            CanvasImage = dummyImg,
+        };
+
+        Assert.True(item.IsChecked);
+        item.IsChecked = false;
+        Assert.False(dummyImg.IsVisible);
+        item.IsChecked = true;
+        Assert.True(dummyImg.IsVisible);
+    }
+
+    [AvaloniaFact]
+    public void SceneMask_WalkToggleBehavior()
+    {
+        MainWindow window = Show(new MainWindow());
+        var walkToggle = window.FindControl<Avalonia.Controls.Primitives.ToggleButton>("MaskTypeWalkToggle")!;
+        var hotspotToggle = window.FindControl<Avalonia.Controls.Primitives.ToggleButton>("MaskTypeHotspotToggle")!;
+
+        // When Walk is visible and Hotspot is invisible, toggling Walk off leaves active layers empty
+        walkToggle.IsVisible = true;
+        walkToggle.IsChecked = true;
+        hotspotToggle.IsVisible = false;
+        hotspotToggle.IsChecked = true;
+
+        // Toggle walk off
+        walkToggle.IsChecked = false;
+
+        // Verify that hidden buttons are not treated as active in ReadMaskLayersFromButtons
+        var method = typeof(MainWindow).GetMethod("ReadMaskLayersFromButtons", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        method.Invoke(window, null);
+
+        var field = typeof(MainWindow).GetField("_activeMaskLayers", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        var activeLayers = (Core.Formats.MaskLayers)field.GetValue(window)!;
+        Assert.Equal(Core.Formats.MaskLayers.None, activeLayers);
+    }
 }
+

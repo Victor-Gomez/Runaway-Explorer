@@ -13,6 +13,12 @@ public enum GameVersion
 
     /// <summary>Runaway: A Twist of Fate (2009).</summary>
     Runaway3 = 2,
+
+    /// <summary>The Next BIG Thing (2011).</summary>
+    TheNextBigThing = 3,
+
+    /// <summary>Yesterday (2012).</summary>
+    Yesterday = 4,
 }
 
 /// <summary>Metadata and detection definition for a supported game.</summary>
@@ -28,6 +34,25 @@ public sealed class GameDefinition
         Title = title;
         Signatures = signatures;
     }
+
+    public static readonly GameDefinition Yesterday = new(
+        GameVersion.Yesterday,
+        "Yesterday",
+        [
+            "Yesterday.exe",
+            "PSEngine.dll",
+            "PSConfig.exe"
+        ]);
+
+    public static readonly GameDefinition TheNextBigThing = new(
+        GameVersion.TheNextBigThing,
+        "The Next BIG Thing",
+        [
+            "The Next Big Thing.exe",
+            "TNBT_Config.exe",
+            "PS_GFXLib.dll",
+            "PS_SNDLib.dll"
+        ]);
 
     public static readonly GameDefinition Runaway3 = new(
         GameVersion.Runaway3,
@@ -62,10 +87,12 @@ public sealed class GameDefinition
             "RESOURCE.001"
         ]);
 
-    public static readonly IReadOnlyList<GameDefinition> All = [Runaway3, Runaway2, Runaway1];
+    public static readonly IReadOnlyList<GameDefinition> All = [Yesterday, TheNextBigThing, Runaway3, Runaway2, Runaway1];
 
     public static GameDefinition Get(GameVersion version) => version switch
     {
+        GameVersion.Yesterday => Yesterday,
+        GameVersion.TheNextBigThing => TheNextBigThing,
         GameVersion.Runaway3 => Runaway3,
         GameVersion.Runaway2 => Runaway2,
         _ => Runaway1,

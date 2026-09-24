@@ -23,8 +23,11 @@ public enum SpriteFormat
 /// </summary>
 public readonly record struct SpriteRecord(int FrameOffset, int X0, int W, int Y0, int Y1, int SegmentCount);
 
-/// <summary>One run of pixels: <paramref name="Count"/> RGB565 values at byte <paramref name="PixelOffset"/>, painted at screen (<paramref name="X"/>, <paramref name="Y"/>).</summary>
-public readonly record struct SpriteSegment(int X, int Y, int Count, int PixelOffset, bool HasAlpha = false);
+/// <summary>One run of pixels: <paramref name="Count"/> values at byte <paramref name="PixelOffset"/>, painted at screen (<paramref name="X"/>, <paramref name="Y"/>).</summary>
+public readonly record struct SpriteSegment(int X, int Y, int Count, int PixelOffset, byte Flag = 0)
+{
+    public bool HasAlpha => Flag is 1 or 7;
+}
 
 /// <summary>A decoded frame: the image cropped to its content, and where its top-left sits on the screen. <see cref="Image"/> is <see langword="null"/> for an empty frame.</summary>
 public readonly record struct SpriteFrame(DecodedImage? Image, int X, int Y)
@@ -33,7 +36,10 @@ public readonly record struct SpriteFrame(DecodedImage? Image, int X, int Y)
 }
 
 /// <summary>Decoded segment header parameters for any sprite format.</summary>
-internal readonly record struct SpriteSegmentHeader(int X, int Y, int Count, bool HasAlpha, int HeaderBytes, int PixelBytes);
+internal readonly record struct SpriteSegmentHeader(int X, int Y, int Count, byte Flag, int HeaderBytes, int PixelBytes)
+{
+    public bool HasAlpha => Flag is 1 or 7;
+}
 
 /// <summary>
 /// Format 3 of the scene archives: an animated sprite.
@@ -108,9 +114,16 @@ public sealed class SpriteAsset
                 int y = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(p + 2));
                 byte flag = data[p + 4];
                 int count = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(p + 5));
-                int bpp = flag == 0 ? 2 : (flag == 1 ? 3 : 0);
+                int bpp = flag switch
+                {
+                    0 => 2,
+                    1 => 3,
+                    6 => 3,
+                    7 => 4,
+                    _ => 0
+                };
                 if (bpp == 0 || p + 7 + count * bpp > data.Length) return false;
-                header = new SpriteSegmentHeader(x, y, count, flag == 1, 7, count * bpp);
+                header = new SpriteSegmentHeader(x, y, count, flag, 7, count * bpp);
                 return true;
             }
             case SpriteFormat.Runaway2:
@@ -122,7 +135,7 @@ public sealed class SpriteAsset
                 byte count = data[p + 5];
                 int bpp = flag == 0 ? 2 : (flag == 1 ? 3 : 0);
                 if (bpp == 0 || p + 6 + count * bpp > data.Length) return false;
-                header = new SpriteSegmentHeader(x, y, count, flag == 1, 6, count * bpp);
+                header = new SpriteSegmentHeader(x, y, count, flag, 6, count * bpp);
                 return true;
             }
             case SpriteFormat.Runaway1:
@@ -133,7 +146,7 @@ public sealed class SpriteAsset
                 int count = data[p + 4];
                 if (count == 0) count = 1;
                 if (p + 5 + 2 * count > data.Length) return false;
-                header = new SpriteSegmentHeader(x, y, count, false, 5, 2 * count);
+                header = new SpriteSegmentHeader(x, y, count, 0, 5, 2 * count);
                 return true;
             }
             default:
@@ -333,7 +346,7 @@ public sealed class SpriteAsset
             if (!TryReadSegmentHeader(_data, p, Format, out SpriteSegmentHeader h))
                 break;
             p += h.HeaderBytes;
-            segs.Add(new SpriteSegment(h.X, h.Y, h.Count, p, h.HasAlpha));
+            segs.Add(new SpriteSegment(h.X, h.Y, h.Count, p, h.Flag));
             p += h.PixelBytes;
         }
         return segs;
@@ -359,7 +372,54 @@ public sealed class SpriteAsset
         foreach (SpriteSegment s in segs)
         {
             int dst = ((s.Y - y0) * image.Width + (s.X - x0)) * 4;
-            if (s.HasAlpha)
+            if (s.Flag == 6)
+            {
+                int src = s.PixelOffset;
+                for (int k = 0; k < s.Count; k++)
+                {
+                    int outIdx = dst + k * 4;
+                    image.Pixels[outIdx] = _data[src];
+                    image.Pixels[outIdx + 1] = _data[src + 1];
+                    image.Pixels[outIdx + 2] = _data[src + 2];
+                    image.Pixels[outIdx + 3] = 255;
+                    src += 3;
+                }
+            }
+            else if (s.Flag == 7)
+            {
+                int src = s.PixelOffset;
+                for (int k = 0; k < s.Count; k++)
+                {
+                    byte b = _data[src];
+                    byte g = _data[src + 1];
+                    byte r = _data[src + 2];
+                    byte a = _data[src + 3];
+                    src += 4;
+
+                    int outIdx = dst + k * 4;
+                    if (a == 255 || image.Pixels[outIdx + 3] == 0)
+                    {
+                        image.Pixels[outIdx] = b;
+                        image.Pixels[outIdx + 1] = g;
+                        image.Pixels[outIdx + 2] = r;
+                        image.Pixels[outIdx + 3] = a;
+                    }
+                    else
+                    {
+                        float srcA = a / 255f;
+                        float dstA = image.Pixels[outIdx + 3] / 255f;
+                        float outA = srcA + dstA * (1f - srcA);
+                        if (outA > 0)
+                        {
+                            image.Pixels[outIdx] = (byte)((b * srcA + image.Pixels[outIdx] * dstA * (1f - srcA)) / outA);
+                            image.Pixels[outIdx + 1] = (byte)((g * srcA + image.Pixels[outIdx] * dstA * (1f - srcA)) / outA);
+                            image.Pixels[outIdx + 2] = (byte)((r * srcA + image.Pixels[outIdx] * dstA * (1f - srcA)) / outA);
+                            image.Pixels[outIdx + 3] = (byte)(outA * 255f);
+                        }
+                    }
+                }
+            }
+            else if (s.HasAlpha)
             {
                 int src = s.PixelOffset;
                 for (int k = 0; k < s.Count; k++)

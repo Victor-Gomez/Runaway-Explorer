@@ -162,6 +162,8 @@
                         <ComboBoxItem Content="Runaway: A Road Adventure"/>
                         <ComboBoxItem Content="Runaway: The Dream of the Turtle"/>
                         <ComboBoxItem Content="Runaway: A Twist of Fate"/>
+                        <ComboBoxItem Content="The Next BIG Thing"/>
+                        <ComboBoxItem Content="Yesterday"/>
                     </ComboBox>
                     <ComboBox x:Name="TypeFilterCombo" Margin="0,0,0,4" HorizontalAlignment="Stretch"
                               SelectionChanged="TreeFilter_Changed">
@@ -290,7 +292,7 @@
                             <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
                                 <ItemsControl x:Name="SceneOverlaysItemsControl">
                                     <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
+                                        <DataTemplate x:DataType="vm:SceneOverlayItem">
                                             <DockPanel Margin="0,2,0,2">
                                                 <Button Classes="zoomBtn" Width="36" Height="20" Padding="0" Margin="4,0,0,0"
                                                         DockPanel.Dock="Right" FontSize="10" Content="{DynamicResource SceneOverlays_Solo}"
@@ -312,13 +314,13 @@
                               MinHeight="{Binding #ImageScrollViewer.Viewport.Height}">
                             <LayoutTransformControl x:Name="ImageTransformHost" HorizontalAlignment="Center" VerticalAlignment="Center">
                                 <Canvas x:Name="ImageStage" ClipToBounds="True">
-                                    <Image x:Name="ImageBackground" Canvas.Left="0" Canvas.Top="0" Stretch="None"
+                                    <Image x:Name="ImageBackground" Canvas.Left="0" Canvas.Top="0" ZIndex="0" Stretch="None"
                                            RenderOptions.BitmapInterpolationMode="None"/>
-                                    <Image x:Name="SceneMaskImage" Canvas.Left="0" Canvas.Top="0" Stretch="None"
+                                    <Image x:Name="PreviewImage" Canvas.Left="0" Canvas.Top="0" ZIndex="1" Stretch="None"
+                                           RenderOptions.BitmapInterpolationMode="None"/>
+                                    <Canvas x:Name="SceneOverlayLayer" Canvas.Left="0" Canvas.Top="0" ZIndex="2"/>
+                                    <Image x:Name="SceneMaskImage" Canvas.Left="0" Canvas.Top="0" ZIndex="3" Stretch="None"
                                            RenderOptions.BitmapInterpolationMode="None" Opacity="0.55" IsVisible="False"/>
-                                    <Canvas x:Name="SceneOverlayLayer" Canvas.Left="0" Canvas.Top="0"/>
-                                    <Image x:Name="PreviewImage" Canvas.Left="0" Canvas.Top="0" Stretch="None"
-                                           RenderOptions.BitmapInterpolationMode="None"/>
                                 </Canvas>
                             </LayoutTransformControl>
                         </Grid>

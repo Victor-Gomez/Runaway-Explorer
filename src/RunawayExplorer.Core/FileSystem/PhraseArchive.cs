@@ -64,8 +64,12 @@ public static class PhraseArchive
             if (count is < 100 or > 100_000)
                 return false;
 
-            long expectedSize = 4 + (long)count * 4 + (long)count * RecordSize;
-            return stream.Length == expectedSize;
+            long rem = stream.Length - (4 + (long)count * 4);
+            if (rem <= 0 || rem % count != 0)
+                return false;
+
+            long recSize = rem / count;
+            return recSize is >= 200 and <= 1000;
         }
         finally
         {
@@ -91,9 +95,12 @@ public static class PhraseArchive
         byte[] idBytes = new byte[count * 4];
         stream.ReadExactly(idBytes);
 
+        long rem = stream.Length - (4 + (long)count * 4);
+        int recSize = (rem > 0 && rem % count == 0) ? (int)(rem / count) : RecordSize;
+
         var phrases = new List<Phrase>((int)count);
-        byte[] raw = new byte[RecordSize];
-        byte[] plain = new byte[RecordSize];
+        byte[] raw = new byte[recSize];
+        byte[] plain = new byte[recSize];
 
         for (int i = 0; i < count; i++)
         {
@@ -102,13 +109,13 @@ public static class PhraseArchive
 
             byte seed = (byte)(i & 0xFF);
             plain[0] = (byte)(raw[0] ^ seed);
-            for (int j = 1; j < RecordSize; j++)
+            for (int j = 1; j < recSize; j++)
             {
                 plain[j] = (byte)(raw[j] ^ raw[j - 1]);
             }
 
             int len = 0;
-            while (len < RecordSize && plain[len] != 0)
+            while (len < recSize && plain[len] != 0)
             {
                 len++;
             }

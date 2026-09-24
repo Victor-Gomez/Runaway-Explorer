@@ -482,7 +482,7 @@ public partial class MainWindow : Window
     private async void GameSelector_SelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
         if (_initializingGameSelector) return;
-        var newGame = (GameVersion)Math.Clamp(GameSelectorCombo.SelectedIndex, 0, 2);
+        var newGame = (GameVersion)Math.Clamp(GameSelectorCombo.SelectedIndex, 0, 4);
         if (_settings.ActiveGame == newGame && _vfs is not null) return;
         _settings.ActiveGame = newGame;
         _settings.Save();
@@ -1734,11 +1734,16 @@ public partial class MainWindow : Window
         _animFrames = null;
         _animCanvas = null;
         PreviewImage.Source = null;
+        PreviewImage.IsVisible = true;
+        PreviewImage.Opacity = 1.0;
         ImageBackground.Source = null;
         AnimFrameImage.Source = null;
         AnimBackground.Source = null;
 
         SceneOverlayLayer.Children.Clear();
+        SceneOverlayLayer.Opacity = 1.0;
+        if (SceneOverlayOpacitySlider is not null)
+            SceneOverlayOpacitySlider.Value = 100;
         SceneOverlaysPanel.IsVisible = false;
         SceneOverlaysItemsControl.ItemsSource = null;
 
@@ -1821,11 +1826,11 @@ public partial class MainWindow : Window
         _syncingMaskToggles = true;
         try
         {
-            MaskTypeWalkToggle.IsChecked = _activeMaskLayers.HasFlag(MaskLayers.Walk);
-            MaskTypeHotspotToggle.IsChecked = _activeMaskLayers.HasFlag(MaskLayers.Hotspot);
-            MaskTypeDepthToggle.IsChecked = _activeMaskLayers.HasFlag(MaskLayers.Depth);
-            MaskTypeMaterialToggle.IsChecked = _activeMaskLayers.HasFlag(MaskLayers.Material);
-            MaskTypeOccluderToggle.IsChecked = _activeMaskLayers.HasFlag(MaskLayers.Occluder);
+            MaskTypeWalkToggle.IsChecked = MaskTypeWalkToggle.IsVisible && _activeMaskLayers.HasFlag(MaskLayers.Walk);
+            MaskTypeHotspotToggle.IsChecked = MaskTypeHotspotToggle.IsVisible && _activeMaskLayers.HasFlag(MaskLayers.Hotspot);
+            MaskTypeDepthToggle.IsChecked = MaskTypeDepthToggle.IsVisible && _activeMaskLayers.HasFlag(MaskLayers.Depth);
+            MaskTypeMaterialToggle.IsChecked = MaskTypeMaterialToggle.IsVisible && _activeMaskLayers.HasFlag(MaskLayers.Material);
+            MaskTypeOccluderToggle.IsChecked = MaskTypeOccluderToggle.IsVisible && _activeMaskLayers.HasFlag(MaskLayers.Occluder);
         }
         finally
         {
@@ -1836,11 +1841,11 @@ public partial class MainWindow : Window
     private void ReadMaskLayersFromButtons()
     {
         MaskLayers layers = MaskLayers.None;
-        if (MaskTypeWalkToggle.IsChecked == true) layers |= MaskLayers.Walk;
-        if (MaskTypeHotspotToggle.IsChecked == true) layers |= MaskLayers.Hotspot;
-        if (MaskTypeDepthToggle.IsChecked == true) layers |= MaskLayers.Depth;
-        if (MaskTypeMaterialToggle.IsChecked == true) layers |= MaskLayers.Material;
-        if (MaskTypeOccluderToggle.IsChecked == true) layers |= MaskLayers.Occluder;
+        if (MaskTypeWalkToggle.IsVisible && MaskTypeWalkToggle.IsChecked == true) layers |= MaskLayers.Walk;
+        if (MaskTypeHotspotToggle.IsVisible && MaskTypeHotspotToggle.IsChecked == true) layers |= MaskLayers.Hotspot;
+        if (MaskTypeDepthToggle.IsVisible && MaskTypeDepthToggle.IsChecked == true) layers |= MaskLayers.Depth;
+        if (MaskTypeMaterialToggle.IsVisible && MaskTypeMaterialToggle.IsChecked == true) layers |= MaskLayers.Material;
+        if (MaskTypeOccluderToggle.IsVisible && MaskTypeOccluderToggle.IsChecked == true) layers |= MaskLayers.Occluder;
         _activeMaskLayers = layers;
     }
 
@@ -1896,6 +1901,7 @@ public partial class MainWindow : Window
         MaskTypeOccluderToggle.IsVisible = hasOccluders || IsOccluderNode(node);
 
         SyncMaskLayerButtons();
+        ReadMaskLayersFromButtons();
     }
 
     private void ApplyMaskLayers()
@@ -1955,6 +1961,16 @@ public partial class MainWindow : Window
                 return;
             }
 
+            if (PngDecoder.IsPng(data))
+            {
+                if (PngDecoder.Decode(data) is { } img)
+                {
+                    PreviewImage.Source = BitmapConverter.ToBitmap(img);
+                    PreviewImage.IsVisible = true;
+                }
+                return;
+            }
+
             int maskW = info?.Width ?? sceneW ?? 1024;
             int maskH = info?.Height ?? sceneH ?? 600;
             DecodedImage decoded = RleMaskDecoder.Decode(data, maskW, maskH, idMap, table1536, _activeMaskLayers);
@@ -1987,6 +2003,7 @@ public partial class MainWindow : Window
 
         if (!showRle && !showOcc)
         {
+            SceneMaskImage.Source = null;
             SceneMaskImage.IsVisible = false;
             return;
         }
@@ -2003,7 +2020,7 @@ public partial class MainWindow : Window
         if (showRle && rleMaskNode is not null)
         {
             byte[] rleData = _vfs.ReadBytes(rleMaskNode);
-            var rleImg = RleMaskDecoder.Decode(rleData, sceneW, sceneH, idMap, table1536, layers);
+            var rleImg = RleMaskDecoder.Decode(rleData, sceneW, sceneH, idMap, table1536, layers, transparentBackground: true);
             Array.Copy(rleImg.Pixels, compositePixels, Math.Min(rleImg.Pixels.Length, compositePixels.Length));
         }
 
@@ -2089,7 +2106,9 @@ public partial class MainWindow : Window
     private void ShowImage(ImageResource image)
     {
         PreviewImage.Source = BitmapConverter.ToBitmap(image.Image);
-        ImageBackgroundGroup.IsVisible = image.Positioned;
+        PreviewImage.IsVisible = true;
+        bool hasSceneBg = _selectedNode is not null && SceneBackgroundBitmapFor(_selectedNode) is not null;
+        ImageBackgroundGroup.IsVisible = image.Positioned && hasSceneBg;
         string mode = _settings.BackgroundMode.ToLowerInvariant();
         _syncingBackgroundToggles = true;
         try
@@ -2101,7 +2120,8 @@ public partial class MainWindow : Window
         finally { _syncingBackgroundToggles = false; }
 
         bool isMask = image.Kind.Contains("mask", StringComparison.OrdinalIgnoreCase);
-        if (isMask && _selectedNode is not null)
+        bool isRleMask = string.Equals(image.Kind, "scene mask", StringComparison.OrdinalIgnoreCase);
+        if (isRleMask && _selectedNode is not null)
         {
             UpdateMaskLayerButtonsForNode(_selectedNode);
             ImageMaskTypeGroup.IsVisible = true;
@@ -2173,9 +2193,12 @@ public partial class MainWindow : Window
         if (scene.Background is { } bg)
         {
             PreviewImage.Source = BitmapConverter.ToBitmap(bg);
+            PreviewImage.IsVisible = true;
             ImageStage.Background = Brushes.Black;
             ImageStage.Width = bg.Width;
             ImageStage.Height = bg.Height;
+            SceneOverlayLayer.Width = bg.Width;
+            SceneOverlayLayer.Height = bg.Height;
             ImageInfoText.Text = $"{scene.Summary}. Showing the scene background (entry 0).";
         }
         else
@@ -2216,7 +2239,7 @@ public partial class MainWindow : Window
     private void PopulateSceneOverlays(SceneResource scene)
     {
         SceneOverlayLayer.Children.Clear();
-        if (_vfs is null)
+        if (_vfs is null || scene.Background is null)
         {
             SceneOverlaysPanel.IsVisible = false;
             return;
@@ -2250,6 +2273,20 @@ public partial class MainWindow : Window
                     posX = ov.Info.X;
                     posY = ov.Info.Y;
                     kind = ov.Info.IsRectangular ? "overlay (rect)" : "overlay";
+                }
+                else if (PngDecoder.IsPng(data))
+                {
+                    overlayImg = PngDecoder.Decode(data);
+                    posX = child.Image?.X ?? 0;
+                    posY = child.Image?.Y ?? 0;
+                    kind = "overlay (png)";
+                }
+                else if (JpegDecoder.IsJpeg(data))
+                {
+                    overlayImg = JpegDecoder.Decode(data);
+                    posX = child.Image?.X ?? 0;
+                    posY = child.Image?.Y ?? 0;
+                    kind = "overlay (jpeg)";
                 }
 
                 if (overlayImg is null) continue;

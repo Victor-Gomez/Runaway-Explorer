@@ -103,6 +103,8 @@ public partial class SettingsPanel : UserControl
         R1PathText.Text = !string.IsNullOrWhiteSpace(_settings.Runaway1Dir) ? _settings.Runaway1Dir : notConfigured;
         R2PathText.Text = !string.IsNullOrWhiteSpace(_settings.Runaway2Dir) ? _settings.Runaway2Dir : notConfigured;
         R3PathText.Text = !string.IsNullOrWhiteSpace(_settings.Runaway3Dir) ? _settings.Runaway3Dir : notConfigured;
+        TNBTPathText.Text = !string.IsNullOrWhiteSpace(_settings.TheNextBigThingDir) ? _settings.TheNextBigThingDir : notConfigured;
+        YesterdayPathText.Text = !string.IsNullOrWhiteSpace(_settings.YesterdayDir) ? _settings.YesterdayDir : notConfigured;
     }
 
     private async void BrowseR1_Click(object? sender, RoutedEventArgs e)
@@ -177,6 +179,56 @@ public partial class SettingsPanel : UserControl
         _settings.Save();
         UpdateGamePaths();
         if (_settings.ActiveGame == GameVersion.Runaway3)
+            await _owner.ReloadActiveGameAsync();
+    }
+
+    private async void BrowseTNBT_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_owner is null || _settings is null) return;
+        string? folder = await Dialogs.ShowOpenFolderDialog(this, "Select The Next BIG Thing folder", _settings.TheNextBigThingDir);
+        if (!string.IsNullOrWhiteSpace(folder))
+        {
+            _settings.TheNextBigThingDir = folder;
+            _settings.RegisterRecentInstall(folder);
+            _settings.Save();
+            UpdateGamePaths();
+            if (_settings.ActiveGame == GameVersion.TheNextBigThing)
+                await _owner.ReloadActiveGameAsync();
+        }
+    }
+
+    private async void ClearTNBT_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_owner is null || _settings is null) return;
+        _settings.TheNextBigThingDir = null;
+        _settings.Save();
+        UpdateGamePaths();
+        if (_settings.ActiveGame == GameVersion.TheNextBigThing)
+            await _owner.ReloadActiveGameAsync();
+    }
+
+    private async void BrowseYesterday_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_owner is null || _settings is null) return;
+        string? folder = await Dialogs.ShowOpenFolderDialog(this, "Select Yesterday folder", _settings.YesterdayDir);
+        if (!string.IsNullOrWhiteSpace(folder))
+        {
+            _settings.YesterdayDir = folder;
+            _settings.RegisterRecentInstall(folder);
+            _settings.Save();
+            UpdateGamePaths();
+            if (_settings.ActiveGame == GameVersion.Yesterday)
+                await _owner.ReloadActiveGameAsync();
+        }
+    }
+
+    private async void ClearYesterday_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_owner is null || _settings is null) return;
+        _settings.YesterdayDir = null;
+        _settings.Save();
+        UpdateGamePaths();
+        if (_settings.ActiveGame == GameVersion.Yesterday)
             await _owner.ReloadActiveGameAsync();
     }
 
