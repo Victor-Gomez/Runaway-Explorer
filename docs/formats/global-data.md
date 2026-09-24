@@ -72,26 +72,45 @@ A 108 MB global repository of character motion cycles (e.g. the 2,148-frame walk
 
 ### 3. `RESOURCE.003` — dialogue phrase tables
 
-> In *Hollywood Monsters*, `RESOURCE.003` holds the game's script rather than a dialogue tree, and
-> `RESOURCE.001`, `002` and `004` are audio archives (ambient, cinematic and the voice bank) rather than
-> the sprite library, phrase table and viseme index described here. Its own layout is documented in
-> [Hollywood Monsters script text](#4-resource003-in-hollywood-monsters--script-text) below. The explorer
-> browses it as scenes of labels and lines.
+The name covers two unrelated layouts. *Runaway 2* and *3* store a flat list of phrase records, which the
+explorer decodes; *Runaway 1* stores a scene-indexed table that it does not.
 
-Stores dialogue tree node structures and audio clip references.
-
-<a id="4-resource003-in-hollywood-monsters--script-text"></a>
-
-#### Layout
+#### Runaway 2 and Runaway 3 — phrase records
 
 ```text
-0x000: byte[321] DeltaTemplate  -- base template for dialogue state reconstruction
-0x141: u32[1021] SceneOffsets   -- indexed by (SceneId - 1000) / 10
+u32                     PhraseCount     -- 10,454 in Runaway 2; 7,228 in Runaway 3
+u32[PhraseCount]        PhraseIds       -- e.g. 100, 110, 120 ... 90230000
+byte[PhraseCount][401]  Records         -- XOR-chained, NUL-terminated, Windows-1252
+```
+
+Each record is exactly 401 bytes and the text starts at byte 0, recovered with an index-seeded XOR chain:
+
+```text
+seed     = recordIndex & 0xff
+plain[0] = raw[0] ^ seed
+plain[i] = raw[i] ^ raw[i - 1]
+```
+
+Phrase index `k` pairs 1:1 with voice clip `k` in `Dataa/Dataaa.000`, so no lookup table is needed.
+Read by `PhraseArchive`.
+
+#### Runaway 1 — scene-indexed, not decoded
+
+*Runaway 1* uses the shape its engine also gave *Hollywood Monsters*: a 321-byte leading block, then 1,021
+scene offsets, then per-scene 5-byte records.
+
+```text
+0x000: byte[321]  DeltaTemplate   -- 321 is also the Hollywood Monsters row and key length
+0x141: u32[1021]  SceneOffsets    -- indexed by scene number
 ...
 Per-scene block:
-    5-byte phrase records: { u16 Marker, u8 Mid, u16 Tail }
-    Marker == 0xFFFF denotes an empty or unpopulated dialogue slot.
+    5-byte records: { u16 Marker, u8 Mid, u16 Tail }
 ```
+
+Those 5-byte records have the same shape as the *Hollywood Monsters* speech cues below
+(`{ u16 TextRecordId, u8 ContinuationCount, u16 VoiceSampleId }`), which suggests the two files are the
+same format and that the *Hollywood Monsters* decoder may read this one as well. That has not been tested
+against a *Runaway 1* install, so the explorer still shows the file as bytes.
 
 ### 4. `RESOURCE.003` in *Hollywood Monsters* — script text
 

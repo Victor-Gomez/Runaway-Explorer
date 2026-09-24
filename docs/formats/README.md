@@ -47,7 +47,7 @@ The numbering is reused across the games for unrelated things, so it is worth re
 | | `RESOURCE.000` | `001` | `002` | `003` | `004` |
 | --- | --- | --- | --- | --- | --- |
 | **Hollywood Monsters** | UI and font art, plus the shared 80-colour palette block; 1-byte header, 100 slots | Ambient audio | Cinematic audio | Script text: obfuscated rows + speech cues ([global-data.md](global-data.md)) | Voice bank |
-| **Runaway 1** | Font atlases and UI art; 20-byte header, 500 slots | Character sprite library | Cinematic audio | Dialogue phrase tables | Lip-sync visemes |
+| **Runaway 1** | Font atlases and UI art; 20-byte header, 500 slots | Character sprite library | Cinematic audio | Dialogue phrase tables, scene-indexed like Hollywood Monsters' script; not decoded | Lip-sync visemes |
 | **Runaway 2** | Font atlases and UI art; 24-byte header, 312 slots | A scene archive, not a global one | Cinematic audio | Dialogue phrase tables | Lip-sync visemes |
 
 Sample rates and channel counts are never stored in any of these games; the values above are the decoders'

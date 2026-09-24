@@ -23,7 +23,7 @@ headers; the formats were reverse-engineered from the Steam releases and are wri
 
 - **Whole-install browsing.** Supports all six games (*Hollywood Monsters*, *Runaway 1*, *Runaway 2*, *Runaway 3*, *The Next BIG Thing*, and *Yesterday*). Every archive is scanned once and its entries classified by what they
   actually are. The tree is organised by kind: Scenes, Music, Ambient & SFX, Cinematic Audio, Voice,
-  Lip-sync, Video, Global Data. Includes a pre-computed hash-based scan cache so first-time loading is near-instant.
+  Lip-sync, Video, Dialogue, Global Data. Includes a pre-computed hash-based scan cache so first-time loading is near-instant.
 - **Backgrounds, scene masks and overlays.** Displays full-screen scene backgrounds, positioned overlays
   (props, foreground layers, title cards, UI), and scene interaction masks (walkboxes, hotspots, depth planes).
   Overlays and scene masks can be drawn directly on their scene's background at authored coordinates, with
@@ -34,6 +34,9 @@ headers; the formats were reverse-engineered from the Steam releases and are wri
 - **Sound & Video.** Background music, ambient sound effects, cinematic audio, voice acting clips,
   and Bink cutscenes with restored headers played via LibVLC with dedicated volume controls and
   interactive waveform seeking.
+- **Dialogue & script.** Browse the games' written text: *Runaway 2* and *3* by phrase, and *Hollywood
+  Monsters* scene by scene, deciphered from its obfuscated script and shown as that scene's hotspot labels
+  and spoken lines, each pointing at the voice clip that records it where the script names one.
 - **Export & Clipboard.** Single entries or whole folders: PNG for images and scene masks, **animated PNG** or
   numbered **image sequence** (with per-frame screen coordinates) for animations, WAV for audio,
   restored `.bik` for video, text for lip-sync tracks, and raw bytes for data tables. Copy images and
@@ -79,10 +82,14 @@ Windows build bundles it via NuGet; on Linux, install it from your distro's pack
 
 ## What is not decoded
 
-- The per-scene data tables in every scene archive (1536, 43659 and 704 bytes) -- purpose unknown.
-- `RESOURCE.000` (fonts, UI atlas, localised text bitmaps) and `Resource.001` (the character sprite
-  library): their codecs are only partly understood. Shown as hex dumps.
-- `RESOURCE.003` (phrase tables). Dialogue is not stored as text anywhere in the game data.
+- The per-scene data tables in *Runaway*'s scene archives (1536, 43659 and 704 bytes) -- purpose unknown.
+  *Hollywood Monsters*' equivalents are understood: its playable scenes open with a fixed background,
+  palette, region map, lookup pages and metadata block.
+- `RESOURCE.000` (fonts, UI atlas, localised text bitmaps) and *Runaway 1*'s `RESOURCE.001` (the character
+  sprite library): their codecs are only partly understood. Shown as hex dumps. The exception is the tail of
+  *Hollywood Monsters*' `RESOURCE.000`, whose last 14 entries are resident sound effects and play normally.
+- Which character palette each *Hollywood Monsters* scene uses. The choice is compiled into `Monsters.exe`
+  and is not recoverable from the archives, so some scenes tint their cast wrong above colour 207.
 - Animation timing. The files carry none; playback and APNG export use the rate you choose (15 fps by default).
 
 ## Author
