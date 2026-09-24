@@ -114,6 +114,8 @@ public static class BatchExporter
     {
         string name = SanitizeSegment(ExportFileName(file));
         string path = Path.Combine(destinationDir, name);
+        bool indexed = vfs.GameVersion == GameVersion.HollywoodMonsters;
+        int bytesPerPixel = indexed ? 1 : 2;
 
         switch (file.Kind)
         {
@@ -121,9 +123,21 @@ public static class BatchExporter
             {
                 byte[] data = vfs.ReadBytes(file);
                 ImageInfo? info = file.Image;
-                DecodedImage image = info is not null && info.Width * info.Height * 2 == data.Length
-                    ? RasterDecoder.Decode(data, info.Width, info.Height)
-                    : RasterDecoder.TryDecode(data)?.Image ?? throw new InvalidDataException("not a raster");
+                DecodedImage image;
+                if (indexed)
+                {
+                    RasterInfo geometry = info is not null && (long)info.Width * info.Height == data.Length
+                        ? new RasterInfo(info.Width, info.Height, 0, false)
+                        : RasterDecoder.DetectIndexed(data) ?? throw new InvalidDataException("not an indexed raster");
+                    image = RasterDecoder.DecodeIndexed(data, geometry.Width, geometry.Height,
+                        vfs.ScenePaletteFor(file) ?? IndexedPalette.Grayscale);
+                }
+                else
+                {
+                    image = info is not null && info.Width * info.Height * 2 == data.Length
+                        ? RasterDecoder.Decode(data, info.Width, info.Height)
+                        : RasterDecoder.TryDecode(data)?.Image ?? throw new InvalidDataException("not a raster");
+                }
                 PngWriter.Write(image, path);
                 return BatchExportResult.Exported;
             }
@@ -163,21 +177,23 @@ public static class BatchExporter
             case EntryKind.Overlay:
             {
                 byte[] data = vfs.ReadBytes(file);
-                if (SpriteAsset.Parse(data) is { } sprite1)
+                if (SpriteAsset.Parse(data, bytesPerPixel) is { } sprite1)
                 {
+                    sprite1.Palette = vfs.ScenePaletteFor(file);
                     var frame = sprite1.DecodeFrame(0);
                     if (frame.Image is not null)
                         PngWriter.Write(frame.Image, path);
                     return BatchExportResult.Exported;
                 }
-                (DecodedImage image, _) = OverlayDecoder.TryDecode(data) ?? throw new InvalidDataException("not an overlay");
+                (DecodedImage image, _) = OverlayDecoder.TryDecode(data, bytesPerPixel, vfs.ScenePaletteFor(file)) ?? throw new InvalidDataException("not an overlay");
                 PngWriter.Write(image, path);
                 return BatchExportResult.Exported;
             }
 
             case EntryKind.Animation:
             {
-                SpriteAsset asset = SpriteAsset.Parse(vfs.ReadBytes(file)) ?? throw new InvalidDataException("not a sprite");
+                SpriteAsset asset = SpriteAsset.Parse(vfs.ReadBytes(file), bytesPerPixel) ?? throw new InvalidDataException("not a sprite");
+                asset.Palette = vfs.ScenePaletteFor(file);
                 ExportAnimation(asset, path, options.AnimationFps, options.AnimationFrames);
                 return BatchExportResult.Exported;
             }

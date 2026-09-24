@@ -373,3 +373,39 @@ public class SpecificSceneRasterTests
         }
     }
 }
+
+/// <summary>The PNG round-trip, shared by every game whose scene archives store PNG entries.</summary>
+public class PngDecoderTests
+{
+    [Fact]
+    public void PngDecoder_DecodesSyntheticPng()
+    {
+        // 2x2 solid red image (ARGB) created with PngWriter
+        var decoded = new DecodedImage(2, 2, new byte[]
+        {
+            0, 0, 255, 255,   0, 0, 255, 255,
+            0, 0, 255, 255,   0, 0, 255, 255
+        });
+
+        byte[] pngBytes = PngWriter.ToBytes(decoded);
+        Assert.True(PngDecoder.IsPng(pngBytes));
+
+        DecodedImage? roundtrip = PngDecoder.Decode(pngBytes);
+        Assert.NotNull(roundtrip);
+        Assert.Equal(2, roundtrip.Width);
+        Assert.Equal(2, roundtrip.Height);
+        Assert.Equal(255, roundtrip.Pixels[2]); // R
+        Assert.Equal(255, roundtrip.Pixels[3]); // A
+
+        // EntryClassifier should classify it
+        var classification = EntryClassifier.Classify(pngBytes, 2, 2);
+        Assert.Equal(EntryKind.Background, classification.Kind);
+        Assert.NotNull(classification.Image);
+        Assert.Equal(2, classification.Image.Width);
+        Assert.Equal(2, classification.Image.Height);
+
+        // Different scene width makes it an Overlay
+        var overlayClass = EntryClassifier.Classify(pngBytes, 1024, 768);
+        Assert.Equal(EntryKind.Overlay, overlayClass.Kind);
+    }
+}

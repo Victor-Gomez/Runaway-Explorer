@@ -104,6 +104,8 @@
     <x:String x:Key="Settings_Game_TNBT_Subtitle">Folder containing The Next Big Thing.exe and Resource/.</x:String>
     <x:String x:Key="Settings_Game_Yesterday_Title">Yesterday folder</x:String>
     <x:String x:Key="Settings_Game_Yesterday_Subtitle">Folder containing Yesterday.exe and Resource/.</x:String>
+    <x:String x:Key="Settings_Game_HM_Title">Hollywood Monsters folder</x:String>
+    <x:String x:Key="Settings_Game_HM_Subtitle">Folder containing Monsters.exe and the RESOURCE files (the Monsters folder, or its parent).</x:String>
     <x:String x:Key="Settings_Game_NotConfigured">Not configured</x:String>
     <x:String x:Key="Settings_Game_Browse">Browse...</x:String>
     <x:String x:Key="Settings_Game_Clear">Clear</x:String>

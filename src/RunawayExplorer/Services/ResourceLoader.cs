@@ -19,6 +19,9 @@ public static class ResourceLoader
         ArgumentNullException.ThrowIfNull(node);
         ArgumentNullException.ThrowIfNull(vfs);
 
+        bool indexed = vfs.GameVersion == GameVersion.HollywoodMonsters;
+        int bytesPerPixel = indexed ? 1 : 2;
+
         try
         {
             switch (node.Kind)
@@ -26,6 +29,20 @@ public static class ResourceLoader
                 case EntryKind.Background:
                 {
                     byte[] data = vfs.ReadBytes(node);
+                    if (indexed)
+                    {
+                        ImageInfo? bgInfo = node.Image;
+                        if (bgInfo is null || (long)bgInfo.Width * bgInfo.Height != data.Length)
+                        {
+                            if (RasterDecoder.DetectIndexed(data) is not { } detected)
+                                return new ErrorResource($"'{node.GetPath()}' no longer decodes as an indexed raster.");
+                            bgInfo = new ImageInfo { Width = detected.Width, Height = detected.Height };
+                        }
+                        IndexedPalette bgPalette = vfs.ScenePaletteFor(node) ?? IndexedPalette.Grayscale;
+                        return new ImageResource(
+                            RasterDecoder.DecodeIndexed(data, bgInfo.Width, bgInfo.Height, bgPalette),
+                            0, 0, false, "background");
+                    }
                     if (PngDecoder.IsPng(data))
                     {
                         if (PngDecoder.Decode(data) is { } pngImg)
@@ -121,14 +138,15 @@ public static class ResourceLoader
                             return new ImageResource(jpgImg, node.Image?.X ?? 0, node.Image?.Y ?? 0, true, "overlay");
                         return new ErrorResource($"'{node.GetPath()}' failed to decode as JPEG.");
                     }
-                    if (SpriteAsset.Parse(data) is { } sprite1)
+                    if (SpriteAsset.Parse(data, bytesPerPixel) is { } sprite1)
                     {
+                        sprite1.Palette = vfs.ScenePaletteFor(node);
                         var frame = sprite1.DecodeFrame(0);
                         if (frame.Image is null)
                             return new ErrorResource($"'{node.GetPath()}' has empty overlay frame.");
                         return new ImageResource(frame.Image, frame.X, frame.Y, true, "overlay");
                     }
-                    if (OverlayDecoder.TryDecode(data) is not { } ov)
+                    if (OverlayDecoder.TryDecode(data, bytesPerPixel, vfs.ScenePaletteFor(node)) is not { } ov)
                         return new ErrorResource($"'{node.GetPath()}' no longer parses as an overlay.");
                     return new ImageResource(ov.Image, ov.Info.X, ov.Info.Y, true, ov.Info.IsRectangular ? "overlay (rectangular)" : "overlay");
                 }
@@ -136,9 +154,10 @@ public static class ResourceLoader
                 case EntryKind.Animation:
                 {
                     byte[] data = vfs.ReadBytes(node);
-                    SpriteAsset? asset = SpriteAsset.Parse(data);
+                    SpriteAsset? asset = SpriteAsset.Parse(data, bytesPerPixel);
                     if (asset is null)
                         return new ErrorResource($"'{node.GetPath()}' no longer parses as a sprite animation.");
+                    asset.Palette = vfs.ScenePaletteFor(node);
                     return new AnimationResource(asset);
                 }
 
@@ -148,7 +167,10 @@ public static class ResourceLoader
                 case EntryKind.Voice:
                 {
                     AudioInfo pcm = node.Audio ?? VirtualFileSystem.AmbientPcm;
-                    if (node.Kind == EntryKind.Voice && pcm.Format == AudioFormat.RawPcm)
+                    // The adjustable voice rate exists because Runaway's lines carry none. Hollywood Monsters'
+                    // do not carry one either, but its rate is known (22,050 Hz 8-bit mono), so leave it alone.
+                    if (node.Kind == EntryKind.Voice && pcm.Format == AudioFormat.RawPcm
+                        && vfs.GameVersion != GameVersion.HollywoodMonsters)
                         pcm = new AudioInfo { Format = AudioFormat.RawPcm, SampleRate = settings.VoiceSampleRate, Channels = pcm.Channels, BitsPerSample = pcm.BitsPerSample };
 
                     if (pcm.Format == AudioFormat.Mp3)
@@ -209,16 +231,31 @@ public static class ResourceLoader
                 case EntryKind.Dialogue:
                 {
                     var sb = new StringBuilder();
-                    sb.Append("Dialogue phrase ").Append(node.Name);
-                    if (node.EntryIndex >= 0)
+                    if (indexed)
                     {
-                        sb.Append(" (index ").Append(node.EntryIndex)
-                          .Append(")\nPairs with voice clip: VOICE_").Append(node.EntryIndex.ToString("00000")).Append("\n\n");
+                        // Hollywood Monsters' script stores the pairing rather than implying it from the
+                        // row number, and it names a recording for only some of its rows.
+                        sb.Append("Script row ").Append(node.Name);
+                        if (node.Parent is { } stage)
+                            sb.Append(" of ").Append(stage.Name);
+                        sb.Append(node.VoiceClipIndex >= 0
+                            ? $"\nPairs with voice clip: {node.VoiceClipIndex:00000}\n\n"
+                            : "\nNo voice clip is cued for this row.\n\n");
                     }
                     else
                     {
-                        sb.Append("\n\n");
+                        sb.Append("Dialogue phrase ").Append(node.Name);
+                        if (node.EntryIndex >= 0)
+                        {
+                            sb.Append(" (index ").Append(node.EntryIndex)
+                              .Append(")\nPairs with voice clip: VOICE_").Append(node.EntryIndex.ToString("00000")).Append("\n\n");
+                        }
+                        else
+                        {
+                            sb.Append("\n\n");
+                        }
                     }
+
                     sb.Append(node.Subtitle ?? "(empty)");
                     return new TextResource(sb.ToString());
                 }
@@ -233,7 +270,7 @@ public static class ResourceLoader
                     var head = new byte[take];
                     s.ReadExactly(head);
                     byte[]? fullData = node.Kind == EntryKind.Data && node.Size == 1536 ? vfs.ReadBytes(node) : null;
-                    string header = DescribeRaw(node, s.Length, fullData);
+                    string header = DescribeRaw(node, s.Length, fullData, indexed);
                     return new TextResource(header + RawFormat.ToHexDump(head) +
                         (s.Length > take ? $"\n... {s.Length - take:N0} more byte(s) not shown.\n" : string.Empty));
                 }
@@ -278,11 +315,12 @@ public static class ResourceLoader
         return new SceneResource(background, summary, archive);
     }
 
-    private static string DescribeRaw(FsNode node, long length, byte[]? fullData = null)
+    private static string DescribeRaw(FsNode node, long length, byte[]? fullData = null, bool indexed = false)
     {
         string what = node.Kind switch
         {
             EntryKind.Data when length == 1536 => "Scene-archive data entry: 1,536-byte Scene Attribute Table (6 parallel 256-byte lookup tables indexed by Mask ID 0..255).",
+            EntryKind.Data when indexed && IsPaletteSized(length) => "Scene-archive palette block: 6-bit VGA triples filling the bottom of the 256-colour table. Scenes that ship 176 colours take the top 80 from RESOURCE.000.",
             EntryKind.Data => "Scene-archive data entry. Not an image: one of the per-scene tables whose purpose is still open (see docs/formats).",
             EntryKind.GlobalData => "RESOURCE.000 entry: fonts, the UI atlas or a localised text bitmap. These use codecs the viewer does not decode yet (see docs/formats §3.4-3.6).",
             EntryKind.RawFile => "No decoder claims this file; showing its bytes.",
@@ -297,6 +335,10 @@ public static class ResourceLoader
         }
         return baseDesc;
     }
+
+    private static bool IsPaletteSized(long length) =>
+        length is >= IndexedPalette.MinBlockBytes and <= IndexedPalette.FullBlockBytes &&
+        length % IndexedPalette.BytesPerColor == 0;
 
     private static string FormatAttributeTableBreakdown(byte[] data)
     {

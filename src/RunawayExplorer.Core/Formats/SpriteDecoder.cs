@@ -13,6 +13,9 @@ public enum SpriteFormat
 
     /// <summary>Runaway 3: 7-byte segment headers with 16-bit count and alpha flag, absolute table offsets.</summary>
     Runaway3 = 3,
+
+    /// <summary>Hollywood Monsters: Runaway 1's records and 5-byte segment headers, but one palette index per pixel.</summary>
+    HollywoodMonsters = 4,
 }
 
 /// <summary>
@@ -89,6 +92,9 @@ public sealed class SpriteAsset
     /// <summary>True if this sprite uses the Runaway 3 7-byte segment headers (16-bit count) and absolute table offsets.</summary>
     public bool IsRunaway3 => Format == SpriteFormat.Runaway3;
 
+    /// <summary>True if this sprite's pixels are palette indices rather than colours.</summary>
+    public bool IsIndexed => Format == SpriteFormat.HollywoodMonsters;
+
     /// <summary>The union of every frame's box: the region of the screen the animation ever touches. The natural canvas for reassembly.</summary>
     public (int X, int Y, int Width, int Height) Bounds { get; }
 
@@ -139,14 +145,16 @@ public sealed class SpriteAsset
                 return true;
             }
             case SpriteFormat.Runaway1:
+            case SpriteFormat.HollywoodMonsters:
             {
                 if (p + 5 > data.Length) return false;
                 int x = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(p));
                 int y = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(p + 2));
                 int count = data[p + 4];
                 if (count == 0) count = 1;
-                if (p + 5 + 2 * count > data.Length) return false;
-                header = new SpriteSegmentHeader(x, y, count, 0, 5, 2 * count);
+                int bytesPerPixel = format == SpriteFormat.HollywoodMonsters ? 1 : 2;
+                if (p + 5 + bytesPerPixel * count > data.Length) return false;
+                header = new SpriteSegmentHeader(x, y, count, 0, 5, bytesPerPixel * count);
                 return true;
             }
             default:
@@ -178,9 +186,23 @@ public sealed class SpriteAsset
     /// Parses <paramref name="data"/> as a sprite asset. <see langword="null"/> when it is not one.
     /// Cheap: only the record table and frame 0 are walked.
     /// </summary>
-    public static SpriteAsset? Parse(byte[] data)
+    public static SpriteAsset? Parse(byte[] data) => Parse(data, bytesPerPixel: 2);
+
+    /// <summary>
+    /// Parses <paramref name="data"/> as a sprite asset. <see langword="null"/> when it is not one.
+    /// Cheap: only the record table and frame 0 are walked.
+    /// <para>
+    /// <paramref name="bytesPerPixel"/> selects the pixel width the segment walk expects: 2 for the
+    /// RGB565 sprites of the Runaway games, 1 for Hollywood Monsters' palette-indexed ones. It has to be
+    /// told rather than guessed, because the walk is what proves the format and both widths are structurally
+    /// plausible on short frames.
+    /// </para>
+    /// </summary>
+    public static SpriteAsset? Parse(byte[] data, int bytesPerPixel)
     {
         ArgumentNullException.ThrowIfNull(data);
+        if (bytesPerPixel == 1)
+            return ParseIndexed(data);
 
         // 1. Try parsing as Runaway 3 paired sprite (fo0 == headerSize, 7-byte segments with u16 count)
         if (data.Length >= 16)
@@ -334,6 +356,50 @@ public sealed class SpriteAsset
         return new SpriteAsset(data, records, dataOffset, descriptors, SpriteFormat.Runaway1);
     }
 
+    /// <summary>
+    /// The colour table for a <see cref="SpriteFormat.HollywoodMonsters"/> asset, whose pixels are palette
+    /// indices. Unset, <see cref="IndexedPalette.Grayscale"/> stands in so the frames are still readable.
+    /// </summary>
+    public IndexedPalette? Palette { get; set; }
+
+    /// <summary>
+    /// Hollywood Monsters' sprites: Runaway 1's 14-byte records and 5-byte segment headers with one
+    /// palette index per pixel. The leading descriptor records of the Runaway 1 format do not occur here.
+    /// </summary>
+    private static SpriteAsset? ParseIndexed(byte[] data)
+    {
+        if (data.Length < RecordSize || BinaryPrimitives.ReadUInt32LittleEndian(data) != 0)
+            return null;
+
+        var records = new List<SpriteRecord>();
+        long prev = -1;
+        int i = 0;
+        while (i + RecordSize <= data.Length)
+        {
+            long off = BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(i));
+            int x0 = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(i + 4));
+            int w = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(i + 6));
+            int y0 = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(i + 8));
+            int y1 = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(i + 10));
+            int c = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(i + 12));
+            if (off < prev || off >= data.Length || w == 0 || y1 < y0 || y1 >= 4096 || x0 + w > 4096)
+                break;
+            records.Add(new SpriteRecord((int)off, x0, w, y0, y1, c));
+            prev = off;
+            i += RecordSize;
+        }
+
+        if (records.Count == 0 || records[0].FrameOffset != 0)
+            return null;
+
+        int dataOffset = i;
+        int expectedEnd = records.Count > 1 ? dataOffset + records[1].FrameOffset : data.Length;
+        if (!TryWalkFrame(data, dataOffset, records[0].SegmentCount, SpriteFormat.HollywoodMonsters, out int endP) || endP != expectedEnd)
+            return null;
+
+        return new SpriteAsset(data, records, dataOffset, descriptorCount: 0, SpriteFormat.HollywoodMonsters);
+    }
+
     /// <summary>The segments of frame <paramref name="index"/>. A truncated frame yields the segments that fit.</summary>
     public List<SpriteSegment> ReadSegments(int index)
     {
@@ -454,6 +520,10 @@ public sealed class SpriteAsset
                         }
                     }
                 }
+            }
+            else if (Format == SpriteFormat.HollywoodMonsters)
+            {
+                (Palette ?? IndexedPalette.Grayscale).CopyRow(_data, s.PixelOffset, image.Pixels, dst, s.Count);
             }
             else
             {

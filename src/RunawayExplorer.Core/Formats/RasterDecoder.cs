@@ -17,6 +17,12 @@ public static class RasterDecoder
     /// <summary>Entries smaller than this are never rasters (the smallest real one is 204×120).</summary>
     public const int MinBytes = 8_000;
 
+    /// <summary>Hollywood Monsters' screen, in 8-bit indexed pixels. Every one of its backgrounds is exactly this.</summary>
+    public const int IndexedScreenWidth = 1024;
+
+    /// <inheritdoc cref="IndexedScreenWidth"/>
+    public const int IndexedScreenHeight = 480;
+
     /// <summary>Pixels used for the coarse stride sweep. ~60 rows of a 1024-wide image is plenty for the minimum to stand out.</summary>
     private const int CoarseSamplePixels = 60_000;
 
@@ -83,6 +89,32 @@ public static class RasterDecoder
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Works out whether <paramref name="data"/> is one of Hollywood Monsters' 8-bit indexed rasters.
+    /// There is no stride to recover here: the game's screen is a fixed 1024x480 and every background is
+    /// exactly one screen, or a whole number of them stacked.
+    /// </summary>
+    public static RasterInfo? DetectIndexed(ReadOnlySpan<byte> data)
+    {
+        const int screen = IndexedScreenWidth * IndexedScreenHeight;
+        if (data.Length < screen || data.Length % screen != 0)
+            return null;
+        int h = data.Length / IndexedScreenWidth;
+        return new RasterInfo(IndexedScreenWidth, h, 99.0, false);
+    }
+
+    /// <summary>Decodes an 8-bit indexed raster through <paramref name="palette"/>.</summary>
+    public static DecodedImage DecodeIndexed(ReadOnlySpan<byte> data, int width, int height, IndexedPalette palette)
+    {
+        ArgumentNullException.ThrowIfNull(palette);
+        if (data.Length != width * height)
+            throw new ArgumentException($"Expected {width * height} bytes for {width}x{height} indexed, got {data.Length}.");
+
+        var pixels = new byte[width * height * 4];
+        palette.CopyRow(data, 0, pixels, 0, width * height);
+        return new DecodedImage(width, height, pixels);
     }
 
     /// <summary>Decodes a raster whose geometry <see cref="Detect"/> already established.</summary>

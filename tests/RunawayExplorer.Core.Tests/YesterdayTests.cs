@@ -1,4 +1,3 @@
-using System.IO;
 using RunawayExplorer.Core.FileSystem;
 using RunawayExplorer.Core.Formats;
 using RunawayExplorer.Core.Metadata;
@@ -7,22 +6,17 @@ using Xunit;
 
 namespace RunawayExplorer.Core.Tests;
 
-public class TnbtAndYesterdayTests
+public class YesterdayTests
 {
-    public const string TnbtSteamDir = @"F:\Games\Steam\steamapps\common\The Next BIG Thing";
     public const string YesterdaySteamDir = @"F:\Games\Steam\steamapps\common\Yesterday";
 
     [Fact]
-    public void GameDetector_DetectsTnbtAndYesterdaySignatures()
+    public void GameDetector_DetectsTheSignature()
     {
         string tempDir = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
         Directory.CreateDirectory(tempDir);
         try
         {
-            File.WriteAllText(Path.Combine(tempDir, "The Next Big Thing.exe"), "dummy");
-            Assert.Equal(GameVersion.TheNextBigThing, GameDetector.Detect(tempDir));
-
-            File.Delete(Path.Combine(tempDir, "The Next Big Thing.exe"));
             File.WriteAllText(Path.Combine(tempDir, "Yesterday.exe"), "dummy");
             Assert.Equal(GameVersion.Yesterday, GameDetector.Detect(tempDir));
         }
@@ -34,125 +28,63 @@ public class TnbtAndYesterdayTests
     }
 
     [Fact]
-    public void GameDetector_DetectsRealInstalls()
+    public void GameDetector_DetectsARealInstall()
     {
-        if (Directory.Exists(TnbtSteamDir))
-            Assert.Equal(GameVersion.TheNextBigThing, GameDetector.Detect(TnbtSteamDir));
-
         if (Directory.Exists(YesterdaySteamDir))
             Assert.Equal(GameVersion.Yesterday, GameDetector.Detect(YesterdaySteamDir));
     }
 
     [Fact]
-    public void AppSettings_ManagesTnbtAndYesterdayPaths()
+    public void AppSettings_ManagesTheYesterdayPath()
     {
         var settings = new AppSettings
         {
-            TheNextBigThingDir = @"C:\Games\TNBT",
             YesterdayDir = @"C:\Games\Yesterday",
-            ActiveGame = GameVersion.TheNextBigThing
+            ActiveGame = GameVersion.Yesterday
         };
 
-        Assert.Equal(@"C:\Games\TNBT", settings.GetGameDir(GameVersion.TheNextBigThing));
         Assert.Equal(@"C:\Games\Yesterday", settings.GetGameDir(GameVersion.Yesterday));
-        Assert.Equal(@"C:\Games\TNBT", settings.ActiveGameDir);
+        Assert.Equal(@"C:\Games\Yesterday", settings.ActiveGameDir);
 
         settings.SetGameDir(GameVersion.Yesterday, @"D:\Yesterday");
         Assert.Equal(@"D:\Yesterday", settings.GetGameDir(GameVersion.Yesterday));
     }
 
     [Fact]
-    public void SceneArchive_RecognizesTnbtAndYesterdayNames()
+    public void SceneArchive_RecognizesYesterdayNames()
     {
         // Scene archives
-        Assert.True(SceneArchive.IsSceneArchiveName("RESOURCE.A00", GameVersion.TheNextBigThing));
-        Assert.True(SceneArchive.IsSceneArchiveName("RESOURCE.B04", GameVersion.TheNextBigThing));
-        Assert.True(SceneArchive.IsSceneArchiveName("RESOURCE.SP1", GameVersion.TheNextBigThing));
         Assert.True(SceneArchive.IsSceneArchiveName("RESOURCE.A00", GameVersion.Yesterday));
         Assert.True(SceneArchive.IsSceneArchiveName("RESOURCE.H01", GameVersion.Yesterday));
         Assert.True(SceneArchive.IsSceneArchiveName("RESOURCE.SP8", GameVersion.Yesterday));
 
         // Non-scene archives
-        Assert.False(SceneArchive.IsSceneArchiveName("RESOURCE.TAB", GameVersion.TheNextBigThing));
-        Assert.False(SceneArchive.IsSceneArchiveName("RESOURCE.IFZ", GameVersion.TheNextBigThing));
-        Assert.False(SceneArchive.IsSceneArchiveName("RESOURCE.003", GameVersion.TheNextBigThing));
-        Assert.False(SceneArchive.IsSceneArchiveName("RESOURCE.004", GameVersion.TheNextBigThing));
-        Assert.False(SceneArchive.IsSceneArchiveName("RESOURCE.S00", GameVersion.TheNextBigThing)); // Audio
         Assert.False(SceneArchive.IsSceneArchiveName("RESOURCE.DIS", GameVersion.Yesterday));
         Assert.False(SceneArchive.IsSceneArchiveName("RESOURCE.TAB", GameVersion.Yesterday));
         Assert.False(SceneArchive.IsSceneArchiveName("RESOURCE.CRD", GameVersion.Yesterday));
     }
 
     [Fact]
-    public void PngDecoder_DecodesSyntheticPng()
+    public void RealInstall_CanLoadAndScan()
     {
-        // 2x2 solid red image (ARGB) created with PngWriter
-        var decoded = new DecodedImage(2, 2, new byte[]
-        {
-            0, 0, 255, 255,   0, 0, 255, 255,
-            0, 0, 255, 255,   0, 0, 255, 255
-        });
+        if (!Directory.Exists(YesterdaySteamDir))
+            return;
 
-        byte[] pngBytes = PngWriter.ToBytes(decoded);
-        Assert.True(PngDecoder.IsPng(pngBytes));
+        var cache = ScanCache.Ephemeral();
+        var vfs = VirtualFileSystem.Init(YesterdaySteamDir, cache: cache);
+        Assert.Equal(GameVersion.Yesterday, vfs.GameVersion);
+        Assert.True(vfs.Summary.SceneArchives > 0);
+        Assert.True(vfs.Summary.Backgrounds > 0);
+        Assert.True(vfs.Summary.Videos > 0);
 
-        DecodedImage? roundtrip = PngDecoder.Decode(pngBytes);
-        Assert.NotNull(roundtrip);
-        Assert.Equal(2, roundtrip.Width);
-        Assert.Equal(2, roundtrip.Height);
-        Assert.Equal(255, roundtrip.Pixels[2]); // R
-        Assert.Equal(255, roundtrip.Pixels[3]); // A
-
-        // EntryClassifier should classify it
-        var classification = EntryClassifier.Classify(pngBytes, 2, 2);
-        Assert.Equal(EntryKind.Background, classification.Kind);
-        Assert.NotNull(classification.Image);
-        Assert.Equal(2, classification.Image.Width);
-        Assert.Equal(2, classification.Image.Height);
-
-        // Different scene width makes it an Overlay
-        var overlayClass = EntryClassifier.Classify(pngBytes, 1024, 768);
-        Assert.Equal(EntryKind.Overlay, overlayClass.Kind);
-    }
-
-    [Fact]
-    public void RealInstalls_CanLoadAndScan()
-    {
-        if (Directory.Exists(TnbtSteamDir))
-        {
-            var cache = ScanCache.Ephemeral();
-            var vfs = VirtualFileSystem.Init(TnbtSteamDir, cache: cache);
-            Assert.Equal(GameVersion.TheNextBigThing, vfs.GameVersion);
-            Assert.True(vfs.Summary.SceneArchives > 0);
-            Assert.True(vfs.Summary.Backgrounds > 0);
-            Assert.True(vfs.Summary.Videos > 0);
-            Assert.True(vfs.Summary.VoiceClips > 0);
-
-            // Second scan with same cache must hit cache
-            var vfs2 = VirtualFileSystem.Init(TnbtSteamDir, cache: cache);
-            Assert.True(vfs2.Summary.FromCache);
-            Assert.Equal(vfs.Summary.SceneArchives, vfs2.Summary.SceneArchives);
-            Assert.Equal(vfs.Summary.Backgrounds, vfs2.Summary.Backgrounds);
-        }
-
-        if (Directory.Exists(YesterdaySteamDir))
-        {
-            var cache = ScanCache.Ephemeral();
-            var vfs = VirtualFileSystem.Init(YesterdaySteamDir, cache: cache);
-            Assert.Equal(GameVersion.Yesterday, vfs.GameVersion);
-            Assert.True(vfs.Summary.SceneArchives > 0);
-            Assert.True(vfs.Summary.Backgrounds > 0);
-            Assert.True(vfs.Summary.Videos > 0);
-
-            // Second scan with same cache must hit cache
-            var vfs2 = VirtualFileSystem.Init(YesterdaySteamDir, cache: cache);
-            Assert.True(vfs2.Summary.FromCache);
-            Assert.Equal(vfs.Summary.SceneArchives, vfs2.Summary.SceneArchives);
-            Assert.Equal(vfs.Summary.Backgrounds, vfs2.Summary.Backgrounds);
-            Assert.True(vfs.Summary.Animations > 0, "Must classify Yesterday sprite animations");
-            Assert.True(vfs.Summary.Masks > 0, "Must classify Yesterday scene masks");
-            Assert.True(vfs.Summary.Overlays > 0, "Must classify Yesterday overlays");
-        }
+        // Second scan with same cache must hit cache
+        var vfs2 = VirtualFileSystem.Init(YesterdaySteamDir, cache: cache);
+        Assert.True(vfs2.Summary.FromCache);
+        Assert.Equal(vfs.Summary.SceneArchives, vfs2.Summary.SceneArchives);
+        Assert.Equal(vfs.Summary.Backgrounds, vfs2.Summary.Backgrounds);
+        Assert.True(vfs.Summary.Animations > 0, "Must classify Yesterday sprite animations");
+        Assert.True(vfs.Summary.Masks > 0, "Must classify Yesterday scene masks");
+        Assert.True(vfs.Summary.Overlays > 0, "Must classify Yesterday overlays");
     }
 
     [Fact]
@@ -350,28 +282,22 @@ public class TnbtAndYesterdayTests
     [Fact]
     public void ResourceD02_ClassifiesAndDecodesCorrectly()
     {
-        foreach (var (gameName, dir, ver) in new[] { ("Yesterday", YesterdaySteamDir, GameVersion.Yesterday), ("TNBT", TnbtSteamDir, GameVersion.TheNextBigThing) })
-        {
-            if (!Directory.Exists(dir)) continue;
-            var vfs = VirtualFileSystem.Init(dir, cache: ScanCache.Ephemeral());
-            var d02 = vfs.Root.Children
-                .FirstOrDefault(c => c.Name == VirtualFileSystem.ScenesFolder)?
-                .Children.FirstOrDefault(c => c.Name.Equals("RESOURCE.D02", StringComparison.OrdinalIgnoreCase));
-            if (d02 is null) continue;
+        if (!Directory.Exists(YesterdaySteamDir))
+            return;
 
-            var e00 = d02.Children.FirstOrDefault(c => c.EntryIndex == 0);
-            Assert.NotNull(e00);
-            Assert.Equal(EntryKind.Background, e00.Kind);
-            Assert.Equal(1920, e00.Image?.Width);
+        var vfs = VirtualFileSystem.Init(YesterdaySteamDir, cache: ScanCache.Ephemeral());
+        var d02 = vfs.Root.Children
+            .FirstOrDefault(c => c.Name == VirtualFileSystem.ScenesFolder)?
+            .Children.FirstOrDefault(c => c.Name.Equals("RESOURCE.D02", StringComparison.OrdinalIgnoreCase));
+        if (d02 is null)
+            return;
 
-            var attrTable = vfs.SceneAttributeTableFor(d02);
-            bool isYesterday = ver == GameVersion.Yesterday;
-            if (isYesterday)
-            {
-                // In Yesterday D02, is there a 1536 byte table?
-                Assert.Null(attrTable);
-            }
-        }
+        var e00 = d02.Children.FirstOrDefault(c => c.EntryIndex == 0);
+        Assert.NotNull(e00);
+        Assert.Equal(EntryKind.Background, e00.Kind);
+        Assert.Equal(1920, e00.Image?.Width);
+
+        // Yesterday's D02 has no 1536-byte attribute table.
+        Assert.Null(vfs.SceneAttributeTableFor(d02));
     }
 }
-

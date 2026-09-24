@@ -2,14 +2,15 @@
 
 # Runaway Explorer
 
-A cross-platform viewer for the game assets of the *Runaway* trilogy and subsequent adventure games by Pendulo Studios:
+A cross-platform viewer for the game assets of the *Runaway* trilogy and the other adventure games by Pendulo Studios:
+- **Hollywood Monsters** (1997)
 - **Runaway: A Road Adventure** (2001)
 - **Runaway 2: The Dream of the Turtle** (2006)
 - **Runaway: A Twist of Fate** (2009)
 - **The Next BIG Thing** (2011)
 - **Yesterday** (2012)
 
-Point it at an install for any of the five games (or configure all five in Settings) and browse every scene background, overlay, sprite animation, music track,
+Point it at an install for any of the six games (or configure all six in Settings) and browse every scene background, overlay, sprite animation, music track,
 sound effect, voice line, lip-sync track and cutscene -- and export any of them.
 
 The games keep everything in nameless offset-table archives with no file names, no extensions and no
@@ -20,7 +21,7 @@ headers; the formats were reverse-engineered from the Steam releases and are wri
 
 ## Features
 
-- **Whole-install browsing.** Supports all five games (*Runaway 1*, *Runaway 2*, *Runaway 3*, *The Next BIG Thing*, and *Yesterday*). Every archive is scanned once and its entries classified by what they
+- **Whole-install browsing.** Supports all six games (*Hollywood Monsters*, *Runaway 1*, *Runaway 2*, *Runaway 3*, *The Next BIG Thing*, and *Yesterday*). Every archive is scanned once and its entries classified by what they
   actually are. The tree is organised by kind: Scenes, Music, Ambient & SFX, Cinematic Audio, Voice,
   Lip-sync, Video, Global Data. Includes a pre-computed hash-based scan cache so first-time loading is near-instant.
 - **Backgrounds, scene masks and overlays.** Displays full-screen scene backgrounds, positioned overlays
@@ -95,7 +96,7 @@ public documentation to build on. The single most useful lesson is recorded at t
 `docs/formats/README.md`: if a decoder needs a heuristic to find where an image starts, look again at
 the container.
 
-*Runaway: A Road Adventure*, *Runaway 2: The Dream of the Turtle*, *Runaway: A Twist of Fate*, *The Next BIG Thing*, and *Yesterday* are trademarks of their respective owners. This is an unaffiliated fan-made
+*Hollywood Monsters*, *Runaway: A Road Adventure*, *Runaway 2: The Dream of the Turtle*, *Runaway: A Twist of Fate*, *The Next BIG Thing*, and *Yesterday* are trademarks of their respective owners. This is an unaffiliated fan-made
 tool and ships no game data.
 
 The UI icons are from **[Lucide](https://lucide.dev)** (ISC licensed).

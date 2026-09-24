@@ -159,6 +159,13 @@ public sealed class FsNode
     /// <summary>Dialogue transcript / subtitle line if available.</summary>
     public string? Subtitle { get; set; }
 
+    /// <summary>
+    /// For a <see cref="EntryKind.Dialogue"/> line, the voice-bank slot that records it, or -1 when the
+    /// script names no recording for it. Only <em>Hollywood Monsters</em> stores this pairing; see
+    /// <see cref="HollywoodScript"/>.
+    /// </summary>
+    public int VoiceClipIndex { get; set; } = -1;
+
     public FsNode? Parent { get; set; }
 
     public List<FsNode> Children { get; } = [];

@@ -27,12 +27,16 @@ public sealed class AppSettings
     /// <summary>The installation folder for Yesterday.</summary>
     public string? YesterdayDir { get; set; }
 
+    /// <summary>The installation folder for Hollywood Monsters.</summary>
+    public string? HollywoodMonstersDir { get; set; }
+
     /// <summary>The currently active game.</summary>
     public GameVersion ActiveGame { get; set; } = GameVersion.Runaway1;
 
     /// <summary>Gets the configured install directory for the specified game version.</summary>
     public string? GetGameDir(GameVersion game) => game switch
     {
+        GameVersion.HollywoodMonsters => HollywoodMonstersDir,
         GameVersion.Yesterday => YesterdayDir,
         GameVersion.TheNextBigThing => TheNextBigThingDir,
         GameVersion.Runaway3 => Runaway3Dir,
@@ -43,7 +47,9 @@ public sealed class AppSettings
     /// <summary>Sets the install directory for the specified game version.</summary>
     public void SetGameDir(GameVersion game, string? path)
     {
-        if (game == GameVersion.Yesterday)
+        if (game == GameVersion.HollywoodMonsters)
+            HollywoodMonstersDir = path;
+        else if (game == GameVersion.Yesterday)
             YesterdayDir = path;
         else if (game == GameVersion.TheNextBigThing)
             TheNextBigThingDir = path;

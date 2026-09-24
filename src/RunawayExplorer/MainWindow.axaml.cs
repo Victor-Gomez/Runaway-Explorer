@@ -482,7 +482,7 @@ public partial class MainWindow : Window
     private async void GameSelector_SelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
         if (_initializingGameSelector) return;
-        var newGame = (GameVersion)Math.Clamp(GameSelectorCombo.SelectedIndex, 0, 4);
+        var newGame = (GameVersion)Math.Clamp(GameSelectorCombo.SelectedIndex, 0, 5);
         if (_settings.ActiveGame == newGame && _vfs is not null) return;
         _settings.ActiveGame = newGame;
         _settings.Save();

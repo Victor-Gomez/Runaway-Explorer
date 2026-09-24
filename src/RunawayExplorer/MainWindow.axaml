@@ -164,6 +164,7 @@
                         <ComboBoxItem Content="Runaway: A Twist of Fate"/>
                         <ComboBoxItem Content="The Next BIG Thing"/>
                         <ComboBoxItem Content="Yesterday"/>
+                        <ComboBoxItem Content="Hollywood Monsters"/>
                     </ComboBox>
                     <ComboBox x:Name="TypeFilterCombo" Margin="0,0,0,4" HorizontalAlignment="Stretch"
                               SelectionChanged="TreeFilter_Changed">

@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using RunawayExplorer.Core.Formats;
 
 namespace RunawayExplorer.Core.FileSystem;
 
@@ -98,6 +99,20 @@ public static class SceneArchive
         return ReadEntries(table, archive.Length);
     }
 
+    /// <summary>
+    /// One Hollywood Monsters scene archive (<c>RESOURCE.I02</c>) has no table at all: it is a bare
+    /// 1024x480 indexed screen followed by its 768-byte palette. Recognised by its exact length, so that
+    /// nothing else can be mistaken for it, and presented as the two entries it would have had.
+    /// </summary>
+    public static List<ArchiveEntry> ReadHeaderlessScreenEntries(long fileLength)
+    {
+        const long raster = (long)RasterDecoder.IndexedScreenWidth * RasterDecoder.IndexedScreenHeight;
+        const long palette = IndexedPalette.FullBlockBytes;
+        if (fileLength != raster + palette)
+            return [];
+        return [new ArchiveEntry(0, 0, raster), new ArchiveEntry(1, raster, palette)];
+    }
+
     /// <summary>True for scene archive names in Runaway 1 (e.g. RESOURCE.A00) and Runaway 2 (e.g. RESOURCE.B04A, RESOURCE.SP1).</summary>
     public static bool IsSceneArchiveName(string fileName, GameVersion game = GameVersion.Runaway1)
     {
@@ -119,7 +134,7 @@ public static class SceneArchive
             return false;
         if (code == "002" && game != GameVersion.Runaway3)
             return false;
-        if (code == "001" && game == GameVersion.Runaway1)
+        if (code == "001" && game is GameVersion.Runaway1 or GameVersion.HollywoodMonsters)
             return false;
 
         return true;
@@ -193,6 +208,49 @@ public static class AudioArchive
         return entries;
     }
 
+    /// <summary>
+    /// Hollywood Monsters' audio tables (<c>RESOURCE.M*</c>, <c>S*</c>, <c>001</c>, <c>002</c>, <c>004</c>):
+    /// a plain offset table with no size half, terminated by a slot holding the file length. Slot 1 always
+    /// holds the table's own byte length; slot 0 is either zero or, in <c>RESOURCE.004</c>, a four-byte tag.
+    /// <para>
+    /// A clip's size is the gap to the next slot, so the runs of repeated offsets that pad an unused part of
+    /// the table fall out as zero-length and are dropped -- which is why this cannot use the Runaway 1
+    /// reader, whose "smallest value in the table is the table length" rule is also defeated by the stale
+    /// bytes left past the terminator.
+    /// </para>
+    /// </summary>
+    public static List<AudioArchiveEntry> ReadHollywoodMonstersEntries(ReadOnlySpan<byte> data, long fileLength)
+    {
+        var entries = new List<AudioArchiveEntry>();
+        if (data.Length < 8)
+            return entries;
+
+        uint tableLen = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(4));
+        if (tableLen < 8 || tableLen % 4 != 0 || tableLen > data.Length || tableLen >= fileLength)
+            return entries;
+
+        int slots = (int)(tableLen / 4);
+        var offsets = new List<uint>(slots) { tableLen };
+        for (int i = 2; i < slots; i++)
+        {
+            uint o = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(i * 4));
+            if (o < offsets[^1] || o > fileLength)
+                break;
+            offsets.Add(o);
+            if (o == fileLength)
+                break;
+        }
+
+        // The last offset only bounds the one before it, so it never starts an entry of its own.
+        for (int i = 0; i + 1 < offsets.Count; i++)
+        {
+            long size = offsets[i + 1] - offsets[i];
+            if (size > 0)
+                entries.Add(new AudioArchiveEntry(i + 1, offsets[i], size, AudioFormat.RawPcm));
+        }
+        return entries;
+    }
+
     public static List<AudioArchiveEntry> ReadAudioEntries(Stream archive)
     {
         ArgumentNullException.ThrowIfNull(archive);
@@ -225,9 +283,19 @@ public static class AudioArchive
 /// <c>RESOURCE.000</c> -- global data (fonts, UI atlas, localised bitmaps).
 /// Runaway 1: 20-byte header, 500 slots.
 /// Runaway 2: 24-byte header (table_half_bytes at 20 is 1248), 312 slots.
+/// Hollywood Monsters: a single leading byte, then 100 slots of offsets and 100 of sizes.
 /// </summary>
 public static class GlobalArchive
 {
+    /// <summary>Hollywood Monsters puts one byte in front of the table; entry 0 therefore starts at 801.</summary>
+    public const int HeaderSizeHm = 1;
+
+    /// <inheritdoc cref="HeaderSizeHm"/>
+    public const int SlotCountHm = 100;
+
+    /// <inheritdoc cref="HeaderSizeHm"/>
+    public const int TableEndHm = HeaderSizeHm + SlotCountHm * 8;
+
     public const int HeaderSizeR1 = 20;
     public const int SlotCountR1 = 500;
     public const int TableEndR1 = HeaderSizeR1 + SlotCountR1 * 8;
@@ -236,11 +304,26 @@ public static class GlobalArchive
     public const int SlotCount = SlotCountR1;
     public const int TableEnd = TableEndR1;
 
-    public static List<ArchiveEntry> ReadEntries(ReadOnlySpan<byte> data, long fileLength)
+    public static List<ArchiveEntry> ReadEntries(ReadOnlySpan<byte> data, long fileLength, GameVersion game = GameVersion.Runaway1)
     {
         var entries = new List<ArchiveEntry>();
         if (data.Length < 24)
             return entries;
+
+        if (game == GameVersion.HollywoodMonsters)
+        {
+            if (data.Length < TableEndHm || BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(HeaderSizeHm)) != TableEndHm)
+                return entries;
+
+            for (int i = 0; i < SlotCountHm; i++)
+            {
+                uint o = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(HeaderSizeHm + i * 4));
+                uint s = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(HeaderSizeHm + SlotCountHm * 4 + i * 4));
+                if (o != 0 && s != 0 && (long)o + s <= fileLength)
+                    entries.Add(new ArchiveEntry(i, o, s));
+            }
+            return entries;
+        }
 
         // Check for Runaway 2 header: byte 20 is table_half_bytes (1248)
         uint r2HalfBytes = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(20));
@@ -274,13 +357,13 @@ public static class GlobalArchive
         return entries;
     }
 
-    public static List<ArchiveEntry> ReadEntries(Stream archive)
+    public static List<ArchiveEntry> ReadEntries(Stream archive, GameVersion game = GameVersion.Runaway1)
     {
         ArgumentNullException.ThrowIfNull(archive);
         archive.Position = 0;
         var table = new byte[(int)Math.Min(archive.Length, 8192)];
         archive.ReadExactly(table);
-        return ReadEntries(table, archive.Length);
+        return ReadEntries(table, archive.Length, game);
     }
 }
 

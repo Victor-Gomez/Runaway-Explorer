@@ -1,0 +1,14 @@
+# Normalise every text file to LF, in the repository and in the working tree.
+#
+# Without this the repository was a mix: most sources LF, a few files CRLF, and no rule saying which.
+# Nothing in the build cares, so a tool that rewrote a file with the other ending went unnoticed until
+# git reported every line of it as changed -- Python's text mode on Windows does exactly that, and it
+# once turned a fifty-line edit into a five-thousand-line diff. Pinning eol=lf makes that impossible
+# rather than merely discouraged: a rewritten file comes back to LF on checkout either way.
+#
+# .NET, MSBuild, Avalonia and Visual Studio all read LF happily on Windows, so nothing here needs CRLF.
+* text=auto eol=lf
+
+# Binaries, so git never inspects or converts their contents.
+*.png binary
+*.ico binary

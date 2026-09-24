@@ -56,12 +56,28 @@ Across Pendulo Studios' releases, the segment header and pixel payload evolved t
 
 | Game | Header size | Header fields | Pixel format | Color depth |
 |---|---|---|---|---|
+| **Hollywood Monsters** | 5 bytes | `u16 X, u16 Y, u8 Count` | Palette index | 8-bit (1 BPP) |
 | **Runaway 1** | 5 bytes | `u16 X, u16 Y, u8 Count` | RGB565 | 16-bit (2 BPP) |
 | **Runaway 2** | 6 bytes | `u16 X, u16 Y, u8 Flag, u8 Count` | RGB565 or RGB565+Alpha | 16-bit / 24-bit (2 or 3 BPP) |
 | **Runaway 3** | 7 bytes | `u16 X, u16 Y, u8 Flag, u16 Count` | RGB565 / Alpha / RGBA | 16-bit to 32-bit |
 | **TNBT / Yesterday** | 7 bytes | `u16 X, u16 Y, u8 Flag, u16 Count` | BGR24 (Flag 6) / RGBA (Flag 7) | 24-bit / 32-bit (3 or 4 BPP) |
 
-### 1. Runaway 1 segment (5 bytes)
+### 1. Hollywood Monsters segment (5 bytes, indexed)
+
+```text
+u16 X                           -- screen column
+u16 Y                           -- screen row
+u8  Count                       -- pixel count (0 means 1 pixel)
+u8  PaletteIndices[Count]       -- 8-bit palette indices (1 byte each)
+```
+
+The record table is *Runaway 1*'s, with two differences: there is no leading descriptor record (the first
+record's frame offset is 0 and it carries real segments), and the pixel width is told to the parser rather
+than inferred, because both 1 and 2 bytes per pixel can satisfy the byte-exact frame walk. The indices are
+resolved through the scene's colour table ([palettes.md](palettes.md)); the characters live at the top of
+that table, so a sprite decoded against the scene block alone comes out as a black silhouette.
+
+### 2. Runaway 1 segment (5 bytes, RGB565)
 
 ```text
 u16 X                           -- screen column
@@ -70,7 +86,7 @@ u8  Count                       -- pixel count (0 means 1 pixel)
 u16 Pixels[Count]               -- little-endian RGB565 pixels (2 bytes each)
 ```
 
-### 2. Runaway 2 segment (6 bytes)
+### 3. Runaway 2 segment (6 bytes)
 
 Introduces an explicit `Flag` byte:
 - `Flag == 0`: RGB565 opaque pixels (2 bytes/pixel).
@@ -86,7 +102,7 @@ Pixel data:
     if Flag == 1: { u16 rgb565, u8 alpha }[Count]
 ```
 
-### 3. Runaway 3, TNBT & Yesterday segment (7 bytes)
+### 4. Runaway 3, TNBT & Yesterday segment (7 bytes)
 
 Upgrades the segment count from 8 bits to 16 bits (`u16 Count`), allowing long horizontal spans without segment fragmentation:
 
@@ -120,4 +136,4 @@ Timing is **not stored** anywhere in the asset. Neither records nor segments spe
 - [`SpriteAsset`](../../src/RunawayExplorer.Core/Formats/SpriteDecoder.cs)
 - [`SpriteRecord`](../../src/RunawayExplorer.Core/Formats/SpriteDecoder.cs)
 - [`SpriteSegment`](../../src/RunawayExplorer.Core/Formats/SpriteDecoder.cs)
-- Tests: [`SpriteDecoderTests`](../../tests/RunawayExplorer.Core.Tests/SpriteDecoderTests.cs), [`TnbtAndYesterdayTests`](../../tests/RunawayExplorer.Core.Tests/TnbtAndYesterdayTests.cs)
+- Tests: [`SpriteDecoderTests`](../../tests/RunawayExplorer.Core.Tests/ImageDecoderTests.cs), [`HollywoodMonstersTests`](../../tests/RunawayExplorer.Core.Tests/HollywoodMonstersTests.cs), [`YesterdayTests`](../../tests/RunawayExplorer.Core.Tests/YesterdayTests.cs)

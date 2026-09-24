@@ -58,7 +58,21 @@ Common scene dimensions across the games:
 - **Tall / vertical scrollers**: 1024×2062 (credits / vertical towers).
 - **Insets / cutaways**: 1444×800, 282×188, 204×120.
 
-### 2. JPEG backgrounds (*The Next BIG Thing*, *Yesterday*)
+### 2. Indexed rasters (*Hollywood Monsters*)
+
+Backgrounds in *Hollywood Monsters* are 8-bit palette-indexed bitmaps. Nothing in the entry records the
+geometry, so the byte count alone identifies one:
+
+- Dimensions: exactly **1024 × 480** pixels (`RasterDecoder.IndexedScreenWidth` × `IndexedScreenHeight`).
+  The game's display is only **640 × 480**: a background is a wide backdrop that the engine scrolls
+  horizontally behind a 640-pixel window, which is why sprite coordinates routinely exceed 640.
+- Byte size: exactly 491,520 bytes (`1024 * 480 * 1`), or a whole multiple of it for the taller scrolling screens.
+- Each byte is an index (0–255) into the scene's colour table; see [palettes.md](palettes.md).
+
+There is no stride sweep here and no sharpness score to compute: a size that is not a whole number of
+full screens is not a raster, and nothing else in the archive is that size.
+
+### 3. JPEG backgrounds (*The Next BIG Thing*, *Yesterday*)
 
 Starting with *The Next BIG Thing*, high-definition 1920×1080 painted backgrounds are stored as standard baseline JPEG images directly within the scene archive.
 
@@ -88,4 +102,4 @@ The decoder inspects the first two bytes for `0xFF 0xD8` and retrieves width and
 
 - [`RasterDecoder`](../../src/RunawayExplorer.Core/Formats/RasterDecoder.cs)
 - [`JpegDecoder`](../../src/RunawayExplorer.Core/Formats/JpegDecoder.cs)
-- Tests: [`RasterDecoderTests`](../../tests/RunawayExplorer.Core.Tests/RasterDecoderTests.cs), [`TnbtAndYesterdayTests`](../../tests/RunawayExplorer.Core.Tests/TnbtAndYesterdayTests.cs)
+- Tests: [`ImageDecoderTests`](../../tests/RunawayExplorer.Core.Tests/ImageDecoderTests.cs), [`HollywoodMonstersTests`](../../tests/RunawayExplorer.Core.Tests/HollywoodMonstersTests.cs), [`TheNextBigThingTests`](../../tests/RunawayExplorer.Core.Tests/TheNextBigThingTests.cs), [`YesterdayTests`](../../tests/RunawayExplorer.Core.Tests/YesterdayTests.cs)

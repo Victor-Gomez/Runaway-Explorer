@@ -8,7 +8,7 @@ Rather than storing a complete full-screen image for every visual change in a sc
 
 ## Layouts
 
-### 1. Positioned row-record overlays (*Runaway 1–3*)
+### 1. Positioned row-record overlays (*Hollywood Monsters*, *Runaway 1–3*)
 
 Stored as an array of horizontal spans with screen coordinates and RGB565 pixel payloads.
 
@@ -27,6 +27,17 @@ Records (RecordCount records):
 
 The records must consume the entry data exactly. If extra trailing bytes exist or if the record stream terminates prematurely, the entry is not a valid overlay.
 
+In *Hollywood Monsters* the payload is one byte per pixel instead of two — a palette index rather than an
+RGB565 value ([palettes.md](palettes.md)) — and everything else is identical:
+
+```text
+    u8  PaletteIndices[PixelCount]
+```
+
+Because exact consumption is the whole format check, and a record stream can satisfy it at either width,
+the pixel width is a parameter of the parser (`OverlayDecoder.Parse(data, bytesPerPixel)`) decided by the
+game being read, never guessed from the bytes.
+
 #### Span types
 
 - **Rectangular overlays**: One span per scanline with constant `X` and `PixelCount` (e.g. title cards, inventory cards, inset panels).
@@ -35,6 +46,7 @@ The records must consume the entry data exactly. If extra trailing bytes exist o
 #### Coordinates and blitting
 
 `(X, Y)` represent absolute screen coordinates:
+- In *Hollywood Monsters*, positions are mapped onto the 1024×480 screen.
 - In *Runaway 1*, positions are mapped onto a 1024×600 canvas (with occasional coordinates up to the scene width on scrolling screens).
 - In *Runaway 2* and *3*, positions scale with widescreen canvas dimensions (e.g. 1280×720).
 - Transparent pixels outside the spans are not stored; decoding starts with a fully transparent BGRA canvas.
@@ -65,4 +77,4 @@ RGBA PNGs (ColorType 6) contain per-pixel alpha channels allowing smooth antiali
 
 - [`OverlayDecoder`](../../src/RunawayExplorer.Core/Formats/OverlayDecoder.cs)
 - [`PngDecoder`](../../src/RunawayExplorer.Core/Formats/PngDecoder.cs)
-- Tests: [`OverlayDecoderTests`](../../tests/RunawayExplorer.Core.Tests/OverlayDecoderTests.cs), [`TnbtAndYesterdayTests`](../../tests/RunawayExplorer.Core.Tests/TnbtAndYesterdayTests.cs)
+- Tests: [`ImageDecoderTests`](../../tests/RunawayExplorer.Core.Tests/ImageDecoderTests.cs), [`HollywoodMonstersTests`](../../tests/RunawayExplorer.Core.Tests/HollywoodMonstersTests.cs), [`YesterdayTests`](../../tests/RunawayExplorer.Core.Tests/YesterdayTests.cs)

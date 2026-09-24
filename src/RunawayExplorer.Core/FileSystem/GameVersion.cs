@@ -19,6 +19,9 @@ public enum GameVersion
 
     /// <summary>Yesterday (2012).</summary>
     Yesterday = 4,
+
+    /// <summary>Hollywood Monsters (1997).</summary>
+    HollywoodMonsters = 5,
 }
 
 /// <summary>Metadata and detection definition for a supported game.</summary>
@@ -34,6 +37,22 @@ public sealed class GameDefinition
         Title = title;
         Signatures = signatures;
     }
+
+    /// <summary>
+    /// Hollywood Monsters keeps its archives beside the executable in a <c>Monsters</c> folder rather than in
+    /// a <c>Resource</c> one, and its <c>RESOURCE.001</c> would otherwise be mistaken for Runaway 1's -- which
+    /// is why this definition is consulted first.
+    /// </summary>
+    public static readonly GameDefinition HollywoodMonsters = new(
+        GameVersion.HollywoodMonsters,
+        "Hollywood Monsters",
+        [
+            "Monsters/Monsters.exe",
+            "Monsters.exe",
+            "Monsters/TraFX.exe",
+            "Monsters/RESOURCE.I18",
+            "RESOURCE.I18"
+        ]);
 
     public static readonly GameDefinition Yesterday = new(
         GameVersion.Yesterday,
@@ -87,10 +106,11 @@ public sealed class GameDefinition
             "RESOURCE.001"
         ]);
 
-    public static readonly IReadOnlyList<GameDefinition> All = [Yesterday, TheNextBigThing, Runaway3, Runaway2, Runaway1];
+    public static readonly IReadOnlyList<GameDefinition> All = [HollywoodMonsters, Yesterday, TheNextBigThing, Runaway3, Runaway2, Runaway1];
 
     public static GameDefinition Get(GameVersion version) => version switch
     {
+        GameVersion.HollywoodMonsters => HollywoodMonsters,
         GameVersion.Yesterday => Yesterday,
         GameVersion.TheNextBigThing => TheNextBigThing,
         GameVersion.Runaway3 => Runaway3,

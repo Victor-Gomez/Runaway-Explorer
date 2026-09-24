@@ -20,6 +20,9 @@ public sealed class OverlayInfo
 
     /// <summary>True when every record has the same x and count -- a plain rectangle (title card, icon) rather than a sparse prop.</summary>
     public bool IsRectangular { get; init; }
+
+    /// <summary>2 for the RGB565 overlays of the Runaway games, 1 for Hollywood Monsters' palette-indexed ones.</summary>
+    public int BytesPerPixel { get; init; } = 2;
 }
 
 /// <summary>
@@ -35,9 +38,17 @@ public sealed class OverlayInfo
 public static class OverlayDecoder
 {
     /// <summary>Parses the record table. <see langword="null"/> unless the records consume <paramref name="data"/> exactly.</summary>
-    public static OverlayInfo? Parse(ReadOnlySpan<byte> data)
+    public static OverlayInfo? Parse(ReadOnlySpan<byte> data) => Parse(data, bytesPerPixel: 2);
+
+    /// <summary>
+    /// Parses the record table with an explicit pixel width. <see langword="null"/> unless the records
+    /// consume <paramref name="data"/> exactly. <paramref name="bytesPerPixel"/> is 2 for the RGB565
+    /// overlays of the Runaway games and 1 for Hollywood Monsters' palette-indexed ones; it is told rather
+    /// than guessed, because exact consumption is the whole format check and both widths can satisfy it.
+    /// </summary>
+    public static OverlayInfo? Parse(ReadOnlySpan<byte> data, int bytesPerPixel)
     {
-        if (data.Length < 8)
+        if (data.Length < 8 || bytesPerPixel is not (1 or 2))
             return null;
 
         int n = BinaryPrimitives.ReadUInt16LittleEndian(data);
@@ -59,11 +70,11 @@ public static class OverlayDecoder
             int y = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(p + 2));
             int c = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(p + 4));
             p += 6;
-            if (c == 0 || p + 2 * c > data.Length)
+            if (c == 0 || p + bytesPerPixel * c > data.Length)
                 return null;
 
             records.Add(new OverlayRecord(x, y, c, p));
-            p += 2 * c;
+            p += bytesPerPixel * c;
 
             if (i == 0) { firstX = x; firstCount = c; }
             else if (x != firstX || c != firstCount) rectangular = false;
@@ -85,6 +96,7 @@ public static class OverlayDecoder
             Width = maxX - minX,
             Height = maxY - minY,
             IsRectangular = rectangular,
+            BytesPerPixel = bytesPerPixel,
         };
     }
 
@@ -93,24 +105,32 @@ public static class OverlayDecoder
     /// a record is transparent. Place the result at (<see cref="OverlayInfo.X"/>, <see cref="OverlayInfo.Y"/>)
     /// on the screen.
     /// </summary>
-    public static DecodedImage Decode(ReadOnlySpan<byte> data, OverlayInfo info)
+    public static DecodedImage Decode(ReadOnlySpan<byte> data, OverlayInfo info, IndexedPalette? palette = null)
     {
         ArgumentNullException.ThrowIfNull(info);
 
         var image = DecodedImage.Transparent(info.Width, info.Height);
+        IndexedPalette? lut = info.BytesPerPixel == 1 ? palette ?? IndexedPalette.Grayscale : null;
         foreach (OverlayRecord r in info.Records)
         {
             int dst = ((r.Y - info.Y) * info.Width + (r.X - info.X)) * 4;
-            Rgb565.CopyRow(data, r.PixelOffset, image.Pixels, dst, r.Count);
+            if (lut is not null)
+                lut.CopyRow(data, r.PixelOffset, image.Pixels, dst, r.Count);
+            else
+                Rgb565.CopyRow(data, r.PixelOffset, image.Pixels, dst, r.Count);
         }
         return image;
     }
 
     /// <summary>Parse + decode in one step. <see langword="null"/> when the bytes are not an overlay.</summary>
-    public static (DecodedImage Image, OverlayInfo Info)? TryDecode(ReadOnlySpan<byte> data)
+    public static (DecodedImage Image, OverlayInfo Info)? TryDecode(ReadOnlySpan<byte> data) =>
+        TryDecode(data, bytesPerPixel: 2);
+
+    /// <inheritdoc cref="TryDecode(ReadOnlySpan{byte})"/>
+    public static (DecodedImage Image, OverlayInfo Info)? TryDecode(ReadOnlySpan<byte> data, int bytesPerPixel, IndexedPalette? palette = null)
     {
-        if (Parse(data) is not { } info)
+        if (Parse(data, bytesPerPixel) is not { } info)
             return null;
-        return (Decode(data, info), info);
+        return (Decode(data, info, palette), info);
     }
 }

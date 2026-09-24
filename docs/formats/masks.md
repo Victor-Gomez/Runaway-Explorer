@@ -12,7 +12,7 @@ Entry 1 (`e01`) and occasional secondary entries define spatial properties for s
 
 ## Encodings
 
-### 1. 3-byte continuous RLE (*Runaway 1–3*)
+### 1. 3-byte continuous RLE (*Hollywood Monsters*, *Runaway 1–3*)
 
 A flat stream of 3-byte run-length encoded records:
 
@@ -26,6 +26,35 @@ N × {
 #### Scanline bounding rule
 
 Runs are **scanline-bounded**: the sum of run lengths in any row equals the scene width (e.g. 1024 or 1280) with zero remainder. Runs do not wrap across scanlines.
+
+#### Ambiguity with palette blocks (*Hollywood Monsters*)
+
+A *Hollywood Monsters* palette block is a whole number of 3-byte records too, and its bytes can satisfy the
+scanline rule, so the classifier tests for a palette block ([palettes.md](palettes.md)) **before** it tests
+for a mask. With that order reversed, a scene's colour table is read as a garbage mask.
+
+#### What the ids mean (*Hollywood Monsters*)
+
+In *Hollywood Monsters* the run stream is not a mask per zone type but a single **region map**: entry
+`e02` expands to one byte for every pixel of the 1024×480 screen, and that byte is an index into seven
+256-entry lookup tables packed into entry `e03` (1,792 bytes, `7 × 256`):
+
+| Offset | Page | Meaning of `table[id]` |
+|---|---|---|
+| `0x000` | Region map | Walkable-region number; a value above the scene's maximum is not walkable |
+| `0x100` | Colour -> item | Scene item (hotspot) index under the cursor, 0 for none |
+| `0x200` | Colour -> actor depth class | Whether the actor draws in front of or behind scenery there |
+| `0x300` | Colour -> palette delta class | Selects a brightness delta for the actor's colours |
+| `0x400` | Colour -> palette adjustment class | Selects a recolouring set for the actor's colours |
+| `0x500` | Colour -> footstep sound | Surface material under the actor's feet |
+| `0x600` | Presentation palette remap | Index remap applied when a presentation replaces the scene |
+
+So one map serves hotspots, walkability, depth sorting, footstep audio and the actor's lighting at once;
+the layers the explorer lets you filter are views of the same pixels through different pages. This also
+explains why the run values cluster in a narrow range: they are region ids, not colour indices, and they
+are unrelated to the scene palette.
+
+The 1,536-byte attribute table described below is the *Runaway 1*/*2* equivalent of these pages.
 
 ### 2. 4-byte RLE (*Yesterday*)
 
@@ -91,4 +120,4 @@ Masks can be previewed standalone or composited at 55% opacity over the scene ba
 - [`RleMaskDecoder`](../../src/RunawayExplorer.Core/Formats/RleMaskDecoder.cs)
 - [`SparseMaskDecoder`](../../src/RunawayExplorer.Core/Formats/SparseMaskDecoder.cs)
 - [`PngDecoder`](../../src/RunawayExplorer.Core/Formats/PngDecoder.cs)
-- Tests: [`RleMaskDecoderTests`](../../tests/RunawayExplorer.Core.Tests/RleMaskDecoderTests.cs), [`SparseMaskDecoderTests`](../../tests/RunawayExplorer.Core.Tests/SparseMaskDecoderTests.cs)
+- Tests: [`RleMaskDecoderTests`](../../tests/RunawayExplorer.Core.Tests/RleMaskDecoderTests.cs), [`SpanMaskDecoderTests`](../../tests/RunawayExplorer.Core.Tests/SpanMaskDecoderTests.cs), [`HollywoodMonstersTests`](../../tests/RunawayExplorer.Core.Tests/HollywoodMonstersTests.cs)

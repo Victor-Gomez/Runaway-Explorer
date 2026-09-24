@@ -42,10 +42,40 @@ public sealed class VirtualFileSystem
     /// <summary>The files carry no rate; 16,000 Hz is what the lines sound right at (22,050 makes them rushed and high).</summary>
     public static readonly AudioInfo VoicePcm = new() { SampleRate = 16_000, Channels = 1, BitsPerSample = 8 };
 
+    /// <summary>
+    /// Hollywood Monsters' music and cinematic tracks (<c>RESOURCE.M*</c>, <c>RESOURCE.002</c>): 16-bit signed
+    /// mono at 11,025 Hz. The autocorrelation of the samples decays smoothly from lag 1 -- which it would not
+    /// do if the stream were interleaved stereo. No rate is stored, so the rate was settled by listening:
+    /// 22,050 plays the tracks at double tempo.
+    /// </summary>
+    public static readonly AudioInfo HollywoodMonstersMusicPcm = new() { SampleRate = 11_025, Channels = 1, BitsPerSample = 16 };
+
+    /// <summary>
+    /// Hollywood Monsters' sound effects (<c>RESOURCE.S*</c>, <c>RESOURCE.001</c>): 8-bit unsigned mono at
+    /// 11,025 Hz. One slot of <c>RESOURCE.S01</c> was shipped as a whole RIFF/WAVE file instead of a bare
+    /// stream, and its <c>fmt </c> chunk states exactly this format.
+    /// </summary>
+    public static readonly AudioInfo HollywoodMonstersSoundPcm = new() { SampleRate = 11_025, Channels = 1, BitsPerSample = 8 };
+
+    /// <summary>First <c>RESOURCE.000</c> slot holding a resident sound effect in <em>Hollywood Monsters</em>.</summary>
+    public const int ResidentSoundFirstEntry = 0x55;
+
+    /// <summary>Last such slot; these 14 run to the end of the archive.</summary>
+    public const int ResidentSoundLastEntry = 0x62;
+
+    /// <summary>
+    /// Hollywood Monsters' voice bank (<c>RESOURCE.004</c>): 8-bit unsigned mono at 22,050 Hz -- twice the
+    /// sound-effect rate, so it needs its own entry. Settled by listening; this is the Spanish release.
+    /// </summary>
+    public static readonly AudioInfo HollywoodMonstersVoicePcm = new() { SampleRate = 22_050, Channels = 1, BitsPerSample = 8 };
+
     private readonly Dictionary<string, DecodedImage?> _backgroundCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _backgroundGate = new();
     private readonly Dictionary<string, byte[]?> _attributeTableCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _attributeTableGate = new();
+    private readonly Dictionary<string, List<(int Index, IndexedPalette Palette)>> _archivePalettes = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _paletteGate = new();
+    private Dictionary<int, IndexedPalette>? _sharedPalettes;
 
     public VirtualFileSystem(string baseDir, FsNode root, VideoKeyfile? keyfile = null, GameVersion gameVersion = GameVersion.Runaway1)
     {
@@ -109,11 +139,17 @@ public sealed class VirtualFileSystem
         ArgumentException.ThrowIfNullOrEmpty(baseDir);
         baseDir = Path.GetFullPath(baseDir);
 
+        GameVersion gameVersion = GameDetector.Detect(baseDir);
+
         string? resourceDir = FindDir(baseDir, "Resource");
+        if (resourceDir is null && gameVersion == GameVersion.HollywoodMonsters)
+        {
+            // Hollywood Monsters has no Resource folder: the archives sit next to Monsters.exe, either in a
+            // Monsters subfolder of the CD/install root or directly in the folder the user picked.
+            resourceDir = FindDir(baseDir, "Monsters") ?? baseDir;
+        }
         if (resourceDir is null)
             throw new DirectoryNotFoundException($"No 'Resource' folder under {baseDir}. Pick the game's install folder (the one containing Runaway.exe or RunawayTDOTT.exe).");
-
-        GameVersion gameVersion = GameDetector.Detect(baseDir);
         cache ??= ScanCache.Ephemeral();
         string activeLanguage = language ?? SceneCatalog.DefaultLanguage;
 
@@ -139,7 +175,9 @@ public sealed class VirtualFileSystem
             Language = activeLanguage
         };
 
-        string[] resourceFiles = Directory.GetFiles(resourceDir, "*", SearchOption.AllDirectories);
+        string[] resourceFiles = gameVersion == GameVersion.HollywoodMonsters
+            ? Directory.GetFiles(resourceDir, "RESOURCE.*", SearchOption.TopDirectoryOnly)
+            : Directory.GetFiles(resourceDir, "*", SearchOption.AllDirectories);
         Array.Sort(resourceFiles, StringComparer.OrdinalIgnoreCase);
 
         FsNode scenes = Folder(root, ScenesFolder);
@@ -186,6 +224,8 @@ public sealed class VirtualFileSystem
         {
             if (node is null)
                 continue;
+            if (node.Children.Count == 0 && gameVersion == GameVersion.HollywoodMonsters)
+                continue;
             Attach(scenes, node);
             summary.SceneArchives++;
             foreach (FsNode child in node.Children)
@@ -213,15 +253,46 @@ public sealed class VirtualFileSystem
             if (SceneArchive.IsSceneArchiveName(name, gameVersion))
                 continue;
 
-            if (upper.StartsWith("RESOURCE.M", StringComparison.Ordinal))
+            bool hollywood = gameVersion == GameVersion.HollywoodMonsters;
+
+            if (hollywood && upper == "RESOURCE.004")
+            {
+                // Not lip-sync here: RESOURCE.004 is the 265 MB voice bank, one clip per slot.
+                progress?.Invoke($"Reading {name}");
+                summary.VoiceClips += Attach(voice, BuildAudioArchive(path, EntryKind.Voice, HollywoodMonstersVoicePcm, dedupe: false, activeLanguage, gameVersion)).Children.Count;
+            }
+            else if (hollywood && upper is "RESOURCE.001" or "RESOURCE.002" or "RESOURCE.003")
+            {
+                if (upper == "RESOURCE.001")
+                {
+                    progress?.Invoke($"Reading {name}");
+                    summary.AudioClips += Attach(ambient, BuildAudioArchive(path, EntryKind.Ambient, HollywoodMonstersSoundPcm, dedupe: false, activeLanguage, gameVersion)).Children.Count;
+                }
+                else if (upper == "RESOURCE.002")
+                {
+                    progress?.Invoke($"Reading {name}");
+                    summary.AudioClips += Attach(cinematic, BuildAudioArchive(path, EntryKind.Cinematic, HollywoodMonstersMusicPcm, dedupe: true, activeLanguage, gameVersion)).Children.Count;
+                }
+                else
+                {
+                    // RESOURCE.003 is the script: obfuscated rows indexed by scene, not the Runaway 2
+                    // phrase table (see docs/formats/global-data.md).
+                    progress?.Invoke($"Reading {name}");
+                    FsNode script = Attach(dialogue, BuildHollywoodScriptArchive(path));
+                    summary.Phrases = script.Children.Sum(stage => stage.Children.Count);
+                }
+            }
+            else if (upper.StartsWith("RESOURCE.M", StringComparison.Ordinal))
             {
                 progress?.Invoke($"Reading {name}");
-                summary.AudioClips += Attach(music, BuildAudioArchive(path, EntryKind.Music, MusicPcm, dedupe: false, activeLanguage, gameVersion)).Children.Count;
+                AudioInfo musicPcm = hollywood ? HollywoodMonstersMusicPcm : MusicPcm;
+                summary.AudioClips += Attach(music, BuildAudioArchive(path, EntryKind.Music, musicPcm, dedupe: false, activeLanguage, gameVersion)).Children.Count;
             }
             else if (upper.StartsWith("RESOURCE.S", StringComparison.Ordinal))
             {
                 progress?.Invoke($"Reading {name}");
-                summary.AudioClips += Attach(ambient, BuildAudioArchive(path, EntryKind.Ambient, AmbientPcm, dedupe: false, activeLanguage, gameVersion)).Children.Count;
+                AudioInfo ambientPcm = hollywood ? HollywoodMonstersSoundPcm : AmbientPcm;
+                summary.AudioClips += Attach(ambient, BuildAudioArchive(path, EntryKind.Ambient, ambientPcm, dedupe: false, activeLanguage, gameVersion)).Children.Count;
             }
             else if (upper == "RESOURCE.002" && gameVersion is GameVersion.Runaway1 or GameVersion.Runaway2)
             {
@@ -244,7 +315,7 @@ public sealed class VirtualFileSystem
             else if (upper == "RESOURCE.000")
             {
                 progress?.Invoke($"Reading {name}");
-                Attach(global, BuildGlobalArchive(path));
+                Attach(global, BuildGlobalArchive(path, gameVersion));
             }
             else
             {
@@ -326,6 +397,8 @@ public sealed class VirtualFileSystem
             cached = [];
             using FileStream f = File.OpenRead(path);
             List<ArchiveEntry> rawEntries = SceneArchive.ReadEntries(f);
+            if (rawEntries.Count == 0 && gameVersion == GameVersion.HollywoodMonsters)
+                rawEntries = SceneArchive.ReadHeaderlessScreenEntries(f.Length);
             var pairedWithPrev = new HashSet<int>();
             Span<byte> head = stackalloc byte[16];
 
@@ -446,7 +519,18 @@ public sealed class VirtualFileSystem
 
         List<AudioArchiveEntry> entries;
         using (FileStream f = File.OpenRead(path))
-            entries = AudioArchive.ReadAudioEntries(f);
+        {
+            if (gameVersion == GameVersion.HollywoodMonsters)
+            {
+                var head = new byte[(int)Math.Min(f.Length, 1 << 16)];
+                f.ReadExactly(head);
+                entries = AudioArchive.ReadHollywoodMonstersEntries(head, f.Length);
+            }
+            else
+            {
+                entries = AudioArchive.ReadAudioEntries(f);
+            }
+        }
 
         var seen = new HashSet<long>();
         foreach (AudioArchiveEntry e in entries)
@@ -516,7 +600,7 @@ public sealed class VirtualFileSystem
         return node;
     }
 
-    private static FsNode BuildGlobalArchive(string path)
+    private static FsNode BuildGlobalArchive(string path, GameVersion gameVersion = GameVersion.Runaway1)
     {
         var node = new FsNode
         {
@@ -528,20 +612,27 @@ public sealed class VirtualFileSystem
 
         List<ArchiveEntry> entries;
         using (FileStream f = File.OpenRead(path))
-            entries = GlobalArchive.ReadEntries(f);
+            entries = GlobalArchive.ReadEntries(f, gameVersion);
 
         foreach (ArchiveEntry e in entries)
         {
+            // Hollywood Monsters keeps its resident sound effects -- the ones that must be audible in every
+            // scene -- in the tail of RESOURCE.000 rather than in a sound bank, at the same 8-bit 11,025 Hz
+            // shape as RESOURCE.S<nn>. Several slots are aliases of one another, byte for byte.
+            bool residentSound = gameVersion == GameVersion.HollywoodMonsters
+                && e.Index >= ResidentSoundFirstEntry && e.Index <= ResidentSoundLastEntry;
+
             Attach(node, new FsNode
             {
                 NodeType = FsNodeType.File | FsNodeType.InArchive,
-                Kind = EntryKind.GlobalData,
+                Kind = residentSound ? EntryKind.Ambient : EntryKind.GlobalData,
                 Name = $"e{e.Index:000}",
                 FriendlyName = $"e{e.Index:000}  {FormatSize(e.Size)}",
                 Offset = e.Offset,
                 Size = e.Size,
                 EntryIndex = e.Index,
                 ArchivePath = path,
+                Audio = residentSound ? HollywoodMonstersSoundPcm : null,
             });
         }
         return node;
@@ -560,6 +651,75 @@ public sealed class VirtualFileSystem
             ArchivePath = path,
         };
     }
+
+    /// <summary>
+    /// Builds the <em>Hollywood Monsters</em> script tree from <c>RESOURCE.003</c>: one folder per scene,
+    /// holding that scene's hotspot labels and its spoken lines. A line that the scene's cues pair with a
+    /// recording carries the voice-bank slot, so the viewer can point at the clip.
+    /// </summary>
+    private static FsNode BuildHollywoodScriptArchive(string path)
+    {
+        var node = new FsNode
+        {
+            NodeType = FsNodeType.Directory,
+            Name = Path.GetFileName(path),
+            ArchivePath = path,
+            Size = new FileInfo(path).Length,
+        };
+
+        List<HollywoodScript.Stage> stages;
+        using (FileStream f = File.OpenRead(path))
+            stages = HollywoodScript.ReadStages(f);
+
+        foreach (HollywoodScript.Stage stage in stages)
+        {
+            var group = new FsNode
+            {
+                NodeType = FsNodeType.Directory,
+                Name = $"scene {stage.SceneNumber}",
+                FriendlyName = $"scene {stage.SceneNumber}  ({stage.Lines.Count} lines, {stage.Labels.Count} labels)",
+                ArchivePath = path,
+                EntryIndex = stage.Index,
+            };
+            Attach(node, group);
+
+            foreach (HollywoodScript.Label label in stage.Labels)
+            {
+                Attach(group, new FsNode
+                {
+                    NodeType = FsNodeType.File | FsNodeType.InArchive,
+                    Kind = EntryKind.Dialogue,
+                    Name = $"label {label.Id:000}",
+                    FriendlyName = $"label {label.Id:000}  \"{Preview(label.Text)}\"",
+                    Size = HollywoodScript.SmallRowSize,
+                    EntryIndex = label.Id,
+                    ArchivePath = path,
+                    Subtitle = label.Text,
+                });
+            }
+
+            foreach (HollywoodScript.Line line in stage.Lines)
+            {
+                Attach(group, new FsNode
+                {
+                    NodeType = FsNodeType.File | FsNodeType.InArchive,
+                    Kind = EntryKind.Dialogue,
+                    Name = $"line {line.Id:0000}",
+                    FriendlyName = $"line {line.Id:0000}  \"{Preview(line.Text)}\"",
+                    Size = HollywoodScript.LargeRowSize,
+                    EntryIndex = line.Id,
+                    ArchivePath = path,
+                    Subtitle = line.Text,
+                    VoiceClipIndex = line.VoiceClipId,
+                });
+            }
+        }
+
+        return node;
+    }
+
+    private static string Preview(string text) =>
+        text.Length > 40 ? text[..37] + "..." : text;
 
     private static (FsNode Node, Dictionary<int, string> Transcripts) BuildPhraseArchive(string path, GameVersion gameVersion)
     {
@@ -951,6 +1111,8 @@ public sealed class VirtualFileSystem
                 image = PngDecoder.Decode(bytes);
             else if (JpegDecoder.IsJpeg(bytes))
                 image = JpegDecoder.Decode(bytes);
+            else if (GameVersion == GameVersion.HollywoodMonsters)
+                image = RasterDecoder.DecodeIndexed(bytes, info.Width, info.Height, ScenePaletteFor(entry0) ?? IndexedPalette.Grayscale);
             else
                 image = RasterDecoder.Decode(bytes, info.Width, info.Height);
         }
@@ -958,6 +1120,128 @@ public sealed class VirtualFileSystem
         lock (_backgroundGate)
             _backgroundCache[archive.ArchivePath] = image;
         return image;
+    }
+
+    /// <summary>
+    /// The colour table to decode one node of a Hollywood Monsters scene archive with.
+    /// <para>
+    /// A palette block applies to the entries that <b>follow</b> it, up to the next block: the table is
+    /// loaded as the archive is read, so each block recolours everything after it. An archive usually has
+    /// one, at entry 1, but sixteen have more -- either a second cast palette part-way through
+    /// (<c>RESOURCE.A03</c> e08) or a whole second scene, background and palette included
+    /// (<c>RESOURCE.C07</c> e33/e34). Picking the "best" block for the whole archive instead renders every
+    /// entry on the wrong side of the boundary in the wrong colours.
+    /// </para>
+    /// <para>
+    /// Entries before the first block -- entry 0, the background -- take that first block. The chosen block
+    /// fills the bottom of the table; when it defines fewer than 256 colours (the usual 176), the rest come
+    /// from the matching shared block in <c>RESOURCE.000</c>, which is where the characters' colours live.
+    /// <see langword="null"/> for any other game, and for an archive with no palette block.
+    /// </para>
+    /// </summary>
+    public IndexedPalette? ScenePaletteFor(FsNode node)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        if (GameVersion != GameVersion.HollywoodMonsters)
+            return null;
+
+        bool isArchiveNode = node.IsDirectory && node.Parent?.Name == ScenesFolder;
+        FsNode? archive = isArchiveNode ? node : node.Parent;
+        if (archive is null || archive.Parent?.Name != ScenesFolder || archive.ArchivePath is null)
+            return null;
+
+        // An archive node itself (its background) is coloured by the archive's first block.
+        int entryIndex = isArchiveNode ? int.MinValue : node.EntryIndex;
+        List<(int Index, IndexedPalette Palette)> blocks = ArchivePalettes(archive);
+        if (blocks.Count == 0)
+            return null;
+
+        // The nearest block at or before the entry; entries ahead of the first block take that first one.
+        (int Index, IndexedPalette Palette) chosen = blocks[0];
+        foreach ((int index, IndexedPalette palette) in blocks)
+        {
+            if (index > entryIndex)
+                break;
+            chosen = (index, palette);
+        }
+        return chosen.Palette;
+    }
+
+    /// <summary>
+    /// Every valid palette block of a scene archive, in entry order, each already completed with the shared
+    /// tail. Read once per archive: an entry that merely has a palette's size but does not parse as one is
+    /// skipped, so it cannot displace the block that actually governs the entries around it.
+    /// </summary>
+    private List<(int Index, IndexedPalette Palette)> ArchivePalettes(FsNode archive)
+    {
+        string path = archive.ArchivePath!;
+        lock (_paletteGate)
+        {
+            if (_archivePalettes.TryGetValue(path, out List<(int, IndexedPalette)>? cached))
+                return cached;
+        }
+
+        var blocks = new List<(int Index, IndexedPalette Palette)>();
+        foreach (FsNode entry in archive.Children)
+        {
+            if (TryReadPalette(entry) is not { } palette)
+                continue;
+            if (palette.DefinedCount < IndexedPalette.Colors &&
+                SharedPalette(IndexedPalette.Colors - palette.DefinedCount) is { } tail)
+            {
+                palette = palette.WithTail(tail);
+            }
+            blocks.Add((entry.EntryIndex, palette));
+        }
+        blocks.Sort((a, b) => a.Index.CompareTo(b.Index));
+
+        lock (_paletteGate)
+            _archivePalettes[path] = blocks;
+        return blocks;
+    }
+
+    /// <summary>The <c>RESOURCE.000</c> block that defines exactly <paramref name="colors"/> colours, if there is one.</summary>
+    private IndexedPalette? SharedPalette(int colors)
+    {
+        lock (_paletteGate)
+        {
+            if (_sharedPalettes is null)
+            {
+                _sharedPalettes = [];
+                FsNode? globalArchive = Root.Children
+                    .FirstOrDefault(c => c.Name == GlobalFolder)?.Children
+                    .FirstOrDefault(c => c.Name.Equals("RESOURCE.000", StringComparison.OrdinalIgnoreCase));
+                if (globalArchive is not null)
+                {
+                    foreach (FsNode entry in globalArchive.Children)
+                    {
+                        if (TryReadPalette(entry) is { } p)
+                            _sharedPalettes.TryAdd(p.DefinedCount, p);
+                    }
+                }
+            }
+            return _sharedPalettes.GetValueOrDefault(colors);
+        }
+    }
+
+    private IndexedPalette? TryReadPalette(FsNode entry)
+    {
+        if (!entry.IsFile ||
+            entry.Size < IndexedPalette.MinBlockBytes ||
+            entry.Size > IndexedPalette.FullBlockBytes ||
+            entry.Size % IndexedPalette.BytesPerColor != 0)
+        {
+            return null;
+        }
+
+        try
+        {
+            return IndexedPalette.TryParse(ReadBytes(entry));
+        }
+        catch (IOException)
+        {
+            return null;
+        }
     }
 
     /// <summary>

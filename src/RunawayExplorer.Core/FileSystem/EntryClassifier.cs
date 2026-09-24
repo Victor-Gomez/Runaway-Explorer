@@ -25,6 +25,9 @@ public static class EntryClassifier
     {
         ArgumentNullException.ThrowIfNull(data);
 
+        if (gameVersion == GameVersion.HollywoodMonsters)
+            return ClassifyIndexed(data, sceneWidth, sceneHeight);
+
         // PNG image check (used in TNBT and Yesterday)
         if (data.Length >= 24 &&
             data[0] == 0x89 && data[1] == 0x50 && data[2] == 0x4E && data[3] == 0x47 &&
@@ -145,6 +148,64 @@ public static class EntryClassifier
         if (SpanMaskDecoder.Detect(data) is { } spanMask)
         {
             return new EntryClassification(EntryKind.Mask, spanMask);
+        }
+
+        return EntryClassification.DataEntry;
+    }
+
+    /// <summary>
+    /// Hollywood Monsters' scene entries. Same three image formats as Runaway 1, but with one palette
+    /// index per pixel instead of an RGB565 pair, plus a fourth kind the Runaway games do not have: the
+    /// scene's own palette block. Palettes are tested first because a block of 6-bit VGA triples is also
+    /// a whole number of 3-byte RLE mask runs, and would otherwise be claimed by the mask decoder.
+    /// </summary>
+    private static EntryClassification ClassifyIndexed(byte[] data, int? sceneWidth, int? sceneHeight)
+    {
+        if (IndexedPalette.IsPaletteBlock(data))
+            return EntryClassification.DataEntry;
+
+        if (RasterDecoder.DetectIndexed(data) is { } raster)
+        {
+            return new EntryClassification(EntryKind.Background, new ImageInfo
+            {
+                Width = raster.Width,
+                Height = raster.Height,
+                Sharpness = raster.Sharpness,
+            });
+        }
+
+        if (SpriteAsset.Parse(data, bytesPerPixel: 1) is { } sprite)
+        {
+            var info = new ImageInfo
+            {
+                X = sprite.Bounds.X,
+                Y = sprite.Bounds.Y,
+                Width = sprite.Bounds.Width,
+                Height = sprite.Bounds.Height,
+                Frames = sprite.FrameCount,
+            };
+            return new EntryClassification(sprite.FrameCount == 1 ? EntryKind.Overlay : EntryKind.Animation, info);
+        }
+
+        if (OverlayDecoder.Parse(data, bytesPerPixel: 1) is { } overlay)
+        {
+            return new EntryClassification(EntryKind.Overlay, new ImageInfo
+            {
+                X = overlay.X,
+                Y = overlay.Y,
+                Width = overlay.Width,
+                Height = overlay.Height,
+            });
+        }
+
+        if (RleMaskDecoder.Detect(data, sceneWidth, sceneHeight) is { } mask)
+        {
+            return new EntryClassification(EntryKind.Mask, new ImageInfo
+            {
+                Width = mask.Width,
+                Height = mask.Height,
+                IsMask = true,
+            });
         }
 
         return EntryClassification.DataEntry;

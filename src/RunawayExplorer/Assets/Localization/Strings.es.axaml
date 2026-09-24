@@ -104,6 +104,8 @@
     <x:String x:Key="Settings_Game_TNBT_Subtitle">Carpeta que contiene The Next Big Thing.exe y Resource/.</x:String>
     <x:String x:Key="Settings_Game_Yesterday_Title">Carpeta de Yesterday</x:String>
     <x:String x:Key="Settings_Game_Yesterday_Subtitle">Carpeta que contiene Yesterday.exe y Resource/.</x:String>
+    <x:String x:Key="Settings_Game_HM_Title">Carpeta de Hollywood Monsters</x:String>
+    <x:String x:Key="Settings_Game_HM_Subtitle">Carpeta que contiene Monsters.exe y los archivos RESOURCE (la carpeta Monsters o su carpeta superior).</x:String>
     <x:String x:Key="Settings_Game_NotConfigured">No configurada</x:String>
     <x:String x:Key="Settings_Game_Browse">Examinar...</x:String>
     <x:String x:Key="Settings_Game_Clear">Borrar</x:String>

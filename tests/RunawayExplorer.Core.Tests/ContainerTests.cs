@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Text;
 using RunawayExplorer.Core.FileSystem;
 using Xunit;
 
@@ -68,6 +69,129 @@ public static class SyntheticArchives
         foreach (uint o in offsets) { BinaryPrimitives.WriteUInt32LittleEndian(u32, o); ms.Write(u32); }
         foreach (uint s in sizes) { BinaryPrimitives.WriteUInt32LittleEndian(u32, s); ms.Write(u32); }
         foreach (byte[]? e in entries) if (e is not null) ms.Write(e);
+        return ms.ToArray();
+    }
+
+    /// <summary>
+    /// A Hollywood Monsters audio archive: a plain offset table whose slot 1 holds the table's own length,
+    /// terminated by the file length, with stale bytes left in the slots past it -- exactly what defeats
+    /// the Runaway 1 reader's "smallest value in the table" rule.
+    /// </summary>
+    public static byte[] HmAudio(IReadOnlyList<byte[]> clips, int slots = 100, uint tag = 0)
+    {
+        var offsets = new uint[slots];
+        offsets[0] = tag;
+        uint cursor = (uint)(slots * 4);
+        int slot = 1;
+        foreach (byte[] c in clips)
+        {
+            offsets[slot++] = cursor;
+            cursor += (uint)c.Length;
+        }
+        offsets[slot++] = cursor;                        // terminator: the file length
+        for (int i = slot; i < slots; i++)
+            offsets[i] = (uint)(2 + i % 3);              // stale bytes, smaller than the table length
+
+        using var ms = new MemoryStream();
+        Span<byte> u32 = stackalloc byte[4];
+        foreach (uint o in offsets) { BinaryPrimitives.WriteUInt32LittleEndian(u32, o); ms.Write(u32); }
+        foreach (byte[] c in clips) ms.Write(c);
+        return ms.ToArray();
+    }
+
+    /// <summary>A Hollywood Monsters global archive: one leading byte, then 100 offsets and 100 sizes.</summary>
+    public static byte[] HmGlobal(IReadOnlyList<byte[]?> entries)
+    {
+        using var ms = new MemoryStream();
+        ms.WriteByte(0);
+        var offsets = new uint[GlobalArchive.SlotCountHm];
+        var sizes = new uint[GlobalArchive.SlotCountHm];
+        uint cursor = GlobalArchive.TableEndHm;
+        for (int i = 0; i < entries.Count; i++)
+        {
+            if (entries[i] is null) continue;
+            offsets[i] = cursor; sizes[i] = (uint)entries[i]!.Length; cursor += sizes[i];
+        }
+        Span<byte> u32 = stackalloc byte[4];
+        foreach (uint o in offsets) { BinaryPrimitives.WriteUInt32LittleEndian(u32, o); ms.Write(u32); }
+        foreach (uint s in sizes) { BinaryPrimitives.WriteUInt32LittleEndian(u32, s); ms.Write(u32); }
+        foreach (byte[]? e in entries) if (e is not null) ms.Write(e);
+        return ms.ToArray();
+    }
+
+    /// <summary>
+    /// A Hollywood Monsters <c>RESOURCE.003</c>: the decode key, the stage offset table, and one block per
+    /// stage. Rows are enciphered on the way out with the same per-column subtraction the game uses, so the
+    /// decoder has to undo it rather than just find the text. <paramref name="stages"/> maps a stage index
+    /// to its labels, its lines, and the voice clip each line is cued with (0 for none).
+    /// </summary>
+    public static byte[] HmScript(
+        IReadOnlyDictionary<int, (string[] Labels, (string Text, int VoiceClip)[] Lines)> stages)
+    {
+        // Any key works, as long as the file leads with it; a varying one proves the column indexing.
+        var key = new byte[HollywoodScript.KeySize];
+        for (int i = 0; i < key.Length; i++)
+            key[i] = (byte)(i * 7 + 13);
+
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        Encoding cp850 = Encoding.GetEncoding(850);
+
+        byte[] Row(string text, int size)
+        {
+            var row = new byte[size];
+            byte[] bytes = cp850.GetBytes(text);
+            bytes.AsSpan(0, Math.Min(bytes.Length, size - 1)).CopyTo(row);
+            for (int c = 0; c < size; c++)
+                row[c] = (byte)(row[c] + key[c]);
+            return row;
+        }
+
+        using var ms = new MemoryStream();
+        ms.Write(key);
+        long tableAt = ms.Position;
+        ms.Write(new byte[HollywoodScript.StageOffsetCount * 4]);
+
+        var offsets = new Dictionary<int, uint>();
+        foreach ((int index, (string[] labels, (string Text, int VoiceClip)[] lines)) in stages.OrderBy(s => s.Key))
+        {
+            offsets[index] = (uint)ms.Position;
+
+            // Cue records sit at frame 0 of successive rows; the rest of the grid stays zero.
+            var cues = new byte[HollywoodScript.DescriptorTableSize];
+            for (int r = 0; r < lines.Length; r++)
+            {
+                if (lines[r].VoiceClip == 0)
+                    continue;
+                int at = r * HollywoodScript.StageCueStride * HollywoodScript.CueRecordSize;
+                if (at + HollywoodScript.CueRecordSize > cues.Length)
+                    break;
+                BinaryPrimitives.WriteUInt16LittleEndian(cues.AsSpan(at), (ushort)(HollywoodScript.LargeRowBaseId + r));
+                BinaryPrimitives.WriteUInt16LittleEndian(cues.AsSpan(at + 3), (ushort)lines[r].VoiceClip);
+            }
+
+            ms.Write(cues);
+            ms.WriteByte((byte)labels.Length);
+            var u16 = new byte[2];
+            BinaryPrimitives.WriteUInt16LittleEndian(u16, (ushort)lines.Length);
+            ms.Write(u16);
+            foreach (string label in labels)
+                ms.Write(Row(label, HollywoodScript.SmallRowSize));
+            foreach ((string text, _) in lines)
+                ms.Write(Row(text, HollywoodScript.LargeRowSize));
+        }
+
+        byte[] data = ms.ToArray();
+        foreach ((int index, uint offset) in offsets)
+            BinaryPrimitives.WriteUInt32LittleEndian(data.AsSpan((int)tableAt + index * 4), offset);
+        return data;
+    }
+
+    /// <summary>The one tableless Hollywood Monsters scene archive: a bare screen followed by its palette.</summary>
+    public static byte[] HmHeadlessScreen(byte[] screen, byte[] palette)
+    {
+        using var ms = new MemoryStream();
+        ms.Write(screen);
+        ms.Write(palette);
         return ms.ToArray();
     }
 

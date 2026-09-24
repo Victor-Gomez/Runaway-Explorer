@@ -105,6 +105,7 @@ public partial class SettingsPanel : UserControl
         R3PathText.Text = !string.IsNullOrWhiteSpace(_settings.Runaway3Dir) ? _settings.Runaway3Dir : notConfigured;
         TNBTPathText.Text = !string.IsNullOrWhiteSpace(_settings.TheNextBigThingDir) ? _settings.TheNextBigThingDir : notConfigured;
         YesterdayPathText.Text = !string.IsNullOrWhiteSpace(_settings.YesterdayDir) ? _settings.YesterdayDir : notConfigured;
+        HollywoodMonstersPathText.Text = !string.IsNullOrWhiteSpace(_settings.HollywoodMonstersDir) ? _settings.HollywoodMonstersDir : notConfigured;
     }
 
     private async void BrowseR1_Click(object? sender, RoutedEventArgs e)
@@ -229,6 +230,31 @@ public partial class SettingsPanel : UserControl
         _settings.Save();
         UpdateGamePaths();
         if (_settings.ActiveGame == GameVersion.Yesterday)
+            await _owner.ReloadActiveGameAsync();
+    }
+
+    private async void BrowseHollywoodMonsters_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_owner is null || _settings is null) return;
+        string? folder = await Dialogs.ShowOpenFolderDialog(this, "Select Hollywood Monsters folder", _settings.HollywoodMonstersDir);
+        if (!string.IsNullOrWhiteSpace(folder))
+        {
+            _settings.HollywoodMonstersDir = folder;
+            _settings.RegisterRecentInstall(folder);
+            _settings.Save();
+            UpdateGamePaths();
+            if (_settings.ActiveGame == GameVersion.HollywoodMonsters)
+                await _owner.ReloadActiveGameAsync();
+        }
+    }
+
+    private async void ClearHollywoodMonsters_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_owner is null || _settings is null) return;
+        _settings.HollywoodMonstersDir = null;
+        _settings.Save();
+        UpdateGamePaths();
+        if (_settings.ActiveGame == GameVersion.HollywoodMonsters)
             await _owner.ReloadActiveGameAsync();
     }
 

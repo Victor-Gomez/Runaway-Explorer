@@ -56,10 +56,10 @@ public static class SyntheticAssets
     {
         // Frame data first, to know the offsets.
         var frameBytes = new List<byte[]>();
+        Span<byte> u16 = stackalloc byte[2];
         foreach (Frame f in frames)
         {
             using var ms = new MemoryStream();
-            Span<byte> u16 = stackalloc byte[2];
             foreach ((int x, int y, ushort[] px) in f.Segments)
             {
                 BinaryPrimitives.WriteUInt16LittleEndian(u16, (ushort)x); ms.Write(u16);
@@ -113,6 +113,108 @@ public static class SyntheticAssets
             BinaryPrimitives.WriteUInt16LittleEndian(w, (ushort)(b.Item3 - b.Item1)); output.Write(w[..2]);
             BinaryPrimitives.WriteUInt16LittleEndian(w, (ushort)b.Item2); output.Write(w[..2]);
             BinaryPrimitives.WriteUInt16LittleEndian(w, (ushort)(b.Item4 - 1)); output.Write(w[..2]);
+            BinaryPrimitives.WriteUInt16LittleEndian(w, (ushort)frames[i].Segments.Count); output.Write(w[..2]);
+            offset += frameBytes[i].Length;
+        }
+        foreach (byte[] fb in frameBytes)
+            output.Write(fb);
+        return output.ToArray();
+    }
+
+
+    // --- Hollywood Monsters: the same record shapes, but one palette index per pixel. ---
+
+    /// <summary>A palette block: <paramref name="colors"/> 6-bit VGA triples, every component in 0..63.</summary>
+    public static byte[] Palette(int colors, int seed = 0)
+    {
+        var data = new byte[colors * IndexedPalette.BytesPerColor];
+        for (int i = 0; i < colors; i++)
+        {
+            data[i * 3] = (byte)((i + seed) % (IndexedPalette.MaxComponent + 1));
+            data[i * 3 + 1] = (byte)((i * 2 + seed) % (IndexedPalette.MaxComponent + 1));
+            data[i * 3 + 2] = (byte)((i * 3 + seed) % (IndexedPalette.MaxComponent + 1));
+        }
+        return data;
+    }
+
+    public static byte DefaultIndexedPixel(int x, int y) => (byte)((x * 7 + y * 13) & 0xff);
+
+    /// <summary>
+    /// An 8-bit indexed raster. The geometry is not encoded anywhere, so the default is the one screen
+    /// size the game uses and the byte count alone is what identifies it.
+    /// </summary>
+    public static byte[] IndexedRaster(
+        int width = RasterDecoder.IndexedScreenWidth,
+        int height = RasterDecoder.IndexedScreenHeight,
+        Func<int, int, byte>? pixel = null)
+    {
+        pixel ??= DefaultIndexedPixel;
+        var data = new byte[width * height];
+        for (int y = 0; y < height; y++)
+            for (int x = 0; x < width; x++)
+                data[y * width + x] = pixel(x, y);
+        return data;
+    }
+
+    /// <summary>An overlay whose row records carry palette indices instead of RGB565 pixels.</summary>
+    public static byte[] IndexedOverlay(IReadOnlyList<(int X, int Y, byte[] Pixels)> rows)
+    {
+        using var ms = new MemoryStream();
+        Span<byte> u16 = stackalloc byte[2];
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, (ushort)rows.Count); ms.Write(u16);
+        foreach ((int x, int y, byte[] px) in rows)
+        {
+            BinaryPrimitives.WriteUInt16LittleEndian(u16, (ushort)x); ms.Write(u16);
+            BinaryPrimitives.WriteUInt16LittleEndian(u16, (ushort)y); ms.Write(u16);
+            BinaryPrimitives.WriteUInt16LittleEndian(u16, (ushort)px.Length); ms.Write(u16);
+            ms.Write(px);
+        }
+        return ms.ToArray();
+    }
+
+    /// <summary>One frame of an indexed sprite: absolute screen runs of palette indices.</summary>
+    public sealed record IndexedFrame(IReadOnlyList<(int X, int Y, byte[] Pixels)> Segments);
+
+    /// <summary>
+    /// An indexed sprite: Runaway 1's 14-byte records and 5-byte segment headers with no leading
+    /// descriptor record, every record's box being the union of all the frames.
+    /// </summary>
+    public static byte[] IndexedSprite(IReadOnlyList<IndexedFrame> frames)
+    {
+        var frameBytes = new List<byte[]>();
+        Span<byte> u16 = stackalloc byte[2];
+        foreach (IndexedFrame f in frames)
+        {
+            using var ms = new MemoryStream();
+            foreach ((int x, int y, byte[] px) in f.Segments)
+            {
+                BinaryPrimitives.WriteUInt16LittleEndian(u16, (ushort)x); ms.Write(u16);
+                BinaryPrimitives.WriteUInt16LittleEndian(u16, (ushort)y); ms.Write(u16);
+                ms.WriteByte((byte)(px.Length == 1 ? 0 : px.Length)); // count 0 means 1, exercise it
+                ms.Write(px);
+            }
+            frameBytes.Add(ms.ToArray());
+        }
+
+        (int x0, int y0, int x1, int y1) = (int.MaxValue, int.MaxValue, 0, 0);
+        foreach (IndexedFrame f in frames)
+            foreach ((int x, int y, byte[] px) in f.Segments)
+            {
+                x0 = Math.Min(x0, x); y0 = Math.Min(y0, y);
+                x1 = Math.Max(x1, x + px.Length); y1 = Math.Max(y1, y + 1);
+            }
+        if (x0 == int.MaxValue) (x0, y0, x1, y1) = (0, 0, 1, 1);
+
+        using var output = new MemoryStream();
+        Span<byte> w = stackalloc byte[4];
+        int offset = 0;
+        for (int i = 0; i < frames.Count; i++)
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(w, (uint)offset); output.Write(w);
+            BinaryPrimitives.WriteUInt16LittleEndian(w, (ushort)x0); output.Write(w[..2]);
+            BinaryPrimitives.WriteUInt16LittleEndian(w, (ushort)(x1 - x0)); output.Write(w[..2]);
+            BinaryPrimitives.WriteUInt16LittleEndian(w, (ushort)y0); output.Write(w[..2]);
+            BinaryPrimitives.WriteUInt16LittleEndian(w, (ushort)(y1 - 1)); output.Write(w[..2]);
             BinaryPrimitives.WriteUInt16LittleEndian(w, (ushort)frames[i].Segments.Count); output.Write(w[..2]);
             offset += frameBytes[i].Length;
         }
