@@ -22,7 +22,7 @@ Everything below is little-endian unless stated otherwise. Integers (`u8`, `u16`
 | Multi-frame segment streams | Animated sprites — frame bounding boxes, segment streams (HM 8-bit, R1 5-byte, R2 6-byte alpha, R3 7-byte, TNBT/Yesterday flags 6 & 7) | All | [sprites.md](sprites.md) |
 | 3-byte / 4-byte RLE, Sparse, PNG | Scene masks — walkboxes, depth planes, occluders, and clickable hotspots | All | [masks.md](masks.md) |
 | Raw PCM, MP3, Bink Video (`.bik`) | Audio & Video — synthesized WAV streams, MP3 audio, and XOR-restored Bink cutscenes | All | [audio-video.md](audio-video.md) |
-| `RESOURCE.000` .. `RESOURCE.004` | Global data — font atlases (17-level alpha), UI sprites, character sprite library, phrase tables, and lip-sync visemes | HM, R1–R3 | [global-data.md](global-data.md) |
+| `RESOURCE.000` .. `RESOURCE.004` | Global data — fonts (outlined glyph bitmaps plus their glyph tables), the cursor atlas, UI sprites, character sprite library, phrase tables, and lip-sync visemes | HM, R1–R3 | [global-data.md](global-data.md) |
 | Blocks of 6-bit RGB triples | Palettes — the per-entry colour table and the shared character colours | HM | [palettes.md](palettes.md) |
 
 ## Game-by-game summary

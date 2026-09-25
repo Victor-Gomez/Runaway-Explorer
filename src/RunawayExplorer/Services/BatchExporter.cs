@@ -101,6 +101,7 @@ public static class BatchExporter
             EntryKind.Mask when img is not null => $"{node.Name}_{img.Width}x{img.Height}_mask.png",
             EntryKind.Overlay when img is not null => $"{node.Name}_{img.Width}x{img.Height}_at_{img.X}_{img.Y}.png",
             EntryKind.Animation => $"{node.Name}.png",
+            EntryKind.Font => $"{node.Name}.png",
             EntryKind.Music or EntryKind.Ambient or EntryKind.Cinematic or EntryKind.Voice =>
                 node.Audio?.Format == AudioFormat.Mp3 ? $"{node.Name}.mp3" : $"{node.Name}.wav",
             // DATAVB02.001, DATAVB02.002, ... are different videos: keep the numeric suffix in the name.
@@ -230,6 +231,36 @@ public static class BatchExporter
             case EntryKind.Dialogue:
             {
                 File.WriteAllText(path, file.Subtitle ?? "");
+                return BatchExportResult.Exported;
+            }
+
+
+            case EntryKind.Font:
+            {
+                byte[] data = vfs.ReadBytes(file);
+                // Glyph table entries are small; export as text.
+                if (data.Length % FontDecoder.RecordSize == 0 && data.Length <= 10_000)
+                {
+                    var glyphs = FontDecoder.ReadGlyphTable(data);
+                    var sb = new System.Text.StringBuilder();
+                    for (int i = 0; i < glyphs.Length; i++)
+                    {
+                        var g = glyphs[i];
+                        sb.AppendLine($"[{i}] offset={g.Offset} top={g.Top} height={g.Height} width={g.Width}");
+                    }
+                    string txtPath = Path.ChangeExtension(path, ".txt");
+                    File.WriteAllText(txtPath, sb.ToString());
+                    return BatchExportResult.Exported;
+                }
+                // Bitmap entry: find the table in the sibling slot.
+                FsNode? tableNode = file.Parent?.Children.FirstOrDefault(c => c.EntryIndex == file.EntryIndex + 1 && c.Kind == EntryKind.Font);
+                if (tableNode is null)
+                    return BatchExportResult.Failed;
+                byte[] tableData = vfs.ReadBytes(tableNode);
+                if (!FontDecoder.IsGlyphTable(tableData, data.Length))
+                    return BatchExportResult.Failed;
+                var glyphRecords = FontDecoder.ReadGlyphTable(tableData);
+                PngWriter.Write(FontDecoder.Decode(data, glyphRecords), path);
                 return BatchExportResult.Exported;
             }
 

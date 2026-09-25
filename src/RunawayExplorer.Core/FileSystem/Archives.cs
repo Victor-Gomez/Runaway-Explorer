@@ -327,7 +327,15 @@ public static class GlobalArchive
 
         // Check for Runaway 2 header: byte 20 is table_half_bytes (1248)
         uint r2HalfBytes = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(20));
-        if (r2HalfBytes > 0 && r2HalfBytes % 4 == 0 && r2HalfBytes <= 8192)
+
+        // In Runaway 1 that same u32 is entry 0's offset, and entry 0 begins right after the 500-slot
+        // table, so it reads as TableEndR1. It passes every test below -- it is a multiple of four and
+        // under 8192 -- and parsing the file as Runaway 2 then yields hundreds of plausible fragments
+        // instead of the 151 real entries. Whether it happened depended on how much of the header the
+        // caller handed over, which is why the Runaway 1 layout is recognised first.
+        bool looksLikeR1 = r2HalfBytes == TableEndR1 && data.Length >= TableEndR1;
+
+        if (!looksLikeR1 && r2HalfBytes > 0 && r2HalfBytes % 4 == 0 && r2HalfBytes <= 8192)
         {
             int slotCount = (int)(r2HalfBytes / 4);
             int tableEnd = 24 + (int)r2HalfBytes * 2;

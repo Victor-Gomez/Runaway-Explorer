@@ -229,4 +229,67 @@ public static class SyntheticAssets
         int i = (y * image.Width + x) * 4;
         return (image.Pixels[i + 2], image.Pixels[i + 1], image.Pixels[i], image.Pixels[i + 3]);
     }
+
+    // --- Fonts: outlined glyph bitmaps and their 5-byte-record glyph tables. ---
+
+    /// <summary>
+    /// A glyph table: <paramref name="glyphs"/> 5-byte records that tile a bitmap exactly.
+    /// Each record is { u16 Offset, u8 Top, u8 Height, u8 Width }.
+    /// </summary>
+    public static byte[] GlyphTable(IReadOnlyList<(byte Top, byte Height, byte Width)> glyphs)
+    {
+        var data = new byte[glyphs.Count * 5];
+        ushort offset = 0;
+        for (int i = 0; i < glyphs.Count; i++)
+        {
+            BinaryPrimitives.WriteUInt16LittleEndian(data.AsSpan(i * 5), offset);
+            data[i * 5 + 2] = glyphs[i].Top;
+            data[i * 5 + 3] = glyphs[i].Height;
+            data[i * 5 + 4] = glyphs[i].Width;
+            offset += (ushort)(glyphs[i].Height * glyphs[i].Width);
+        }
+        return data;
+    }
+
+    /// <summary>
+    /// A glyph bitmap whose total size matches the table built by <see cref="GlyphTable"/>.
+    /// Each pixel is a shade value from 0x00 (outline) to 0x10 (fill), with 0x12 for the border.
+    /// </summary>
+    public static byte[] FontBitmap(IReadOnlyList<(byte Top, byte Height, byte Width)> glyphs)
+    {
+        int totalBytes = 0;
+        foreach (var g in glyphs)
+            totalBytes += g.Height * g.Width;
+        var data = new byte[totalBytes];
+        int pos = 0;
+        foreach (var g in glyphs)
+        {
+            for (int y = 0; y < g.Height; y++)
+                for (int x = 0; x < g.Width; x++)
+                {
+                    // Border is transparent (0x12), interior is filled (0x10), edge is outline (0x00).
+                    bool border = x == 0 || x == g.Width - 1 || y == 0 || y == g.Height - 1;
+                    bool edge = !border && (x == 1 || x == g.Width - 2 || y == 1 || y == g.Height - 2);
+                    data[pos++] = border ? (byte)0x12 : edge ? (byte)0x00 : (byte)0x10;
+                }
+        }
+        return data;
+    }
+
+    /// <summary>A 904×540 RGB565 cursor atlas with a key-coloured background and one embedded sprite.</summary>
+    public static byte[] CursorAtlas()
+    {
+        const int w = 904, h = 540;
+        var data = new byte[w * h * 2];
+        ushort key = 0x6841;
+        // Fill entirely with key colour.
+        for (int i = 0; i < w * h; i++)
+            BinaryPrimitives.WriteUInt16LittleEndian(data.AsSpan(i * 2), key);
+        // Paint a small non-key rectangle in the first band (y 10..40, x 20..50) as a synthetic cursor.
+        ushort white = Rgb565(255, 255, 255);
+        for (int y = 10; y < 40; y++)
+            for (int x = 20; x < 50; x++)
+                BinaryPrimitives.WriteUInt16LittleEndian(data.AsSpan((y * w + x) * 2), white);
+        return data;
+    }
 }

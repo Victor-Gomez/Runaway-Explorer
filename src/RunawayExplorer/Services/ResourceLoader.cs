@@ -55,6 +55,10 @@ public static class ResourceLoader
                             return new ImageResource(jpgImg, 0, 0, false, "background");
                         return new ErrorResource($"'{node.GetPath()}' failed to decode as JPEG.");
                     }
+                    if (CursorAtlasDecoder.IsAtlas(data))
+                    {
+                        return new ImageResource(CursorAtlasDecoder.DecodeAtlas(data), 0, 0, false, "cursor atlas");
+                    }
                     ImageInfo? info = node.Image;
                     if (info is null || info.Width * info.Height * 2 != data.Length)
                     {
@@ -260,6 +264,36 @@ public static class ResourceLoader
                     return new TextResource(sb.ToString());
                 }
 
+                case EntryKind.Font:
+                {
+                    byte[] data = vfs.ReadBytes(node);
+                    // A glyph table entry (divisible by 5, small) → informational text.
+                    if (data.Length % FontDecoder.RecordSize == 0 && data.Length <= 10_000)
+                    {
+                        var glyphs = FontDecoder.ReadGlyphTable(data);
+                        int lineHeight = 0;
+                        foreach (var g in glyphs)
+                            lineHeight = Math.Max(lineHeight, g.Top + g.Height);
+                        var sb = new StringBuilder();
+                        sb.Append($"Glyph table: {glyphs.Length} glyphs, line height {lineHeight}\n\n");
+                        for (int i = 0; i < glyphs.Length; i++)
+                        {
+                            var g = glyphs[i];
+                            sb.Append($"  [{i,3}]  offset {g.Offset,5}  top {g.Top,2}  {g.Width}×{g.Height}\n");
+                        }
+                        return new TextResource(sb.ToString());
+                    }
+                    // A glyph bitmap entry: find the neighbouring table to decode it.
+                    // The table is the next slot; look for it in the tree.
+                    byte[]? tableData = FindFontTableData(node, vfs);
+                    if (tableData is not null && FontDecoder.IsGlyphTable(tableData, data.Length))
+                    {
+                        var glyphs = FontDecoder.ReadGlyphTable(tableData);
+                        return new ImageResource(FontDecoder.Decode(data, glyphs), 0, 0, false, $"font, {glyphs.Length} glyphs");
+                    }
+                    return new ErrorResource($"'{node.GetPath()}' is tagged as a font but its glyph table was not found.");
+                }
+
                 case EntryKind.Data:
                 case EntryKind.GlobalData:
                 case EntryKind.RawFile:
@@ -322,7 +356,7 @@ public static class ResourceLoader
             EntryKind.Data when length == 1536 => "Scene-archive data entry: 1,536-byte Scene Attribute Table (6 parallel 256-byte lookup tables indexed by Mask ID 0..255).",
             EntryKind.Data when indexed && IsPaletteSized(length) => "Scene-archive palette block: 6-bit VGA triples filling the bottom of the 256-colour table. Scenes that ship 176 colours take the top 80 from RESOURCE.000.",
             EntryKind.Data => "Scene-archive data entry. Not an image: one of the per-scene tables whose purpose is still open (see docs/formats).",
-            EntryKind.GlobalData => "RESOURCE.000 entry: fonts, the UI atlas or a localised text bitmap. These use codecs the viewer does not decode yet (see docs/formats §3.4-3.6).",
+            EntryKind.GlobalData => "RESOURCE.000 entry: UI atlas, localised text bitmap, or other global data not yet decoded (see docs/formats/global-data.md).",
             EntryKind.RawFile => "No decoder claims this file; showing its bytes.",
             _ => "Raw bytes.",
         };
@@ -381,5 +415,22 @@ public static class ResourceLoader
         }
 
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Locates the glyph table sibling for a font bitmap node. The table sits in the slot immediately
+    /// after the bitmap in the same archive folder.
+    /// </summary>
+    private static byte[]? FindFontTableData(FsNode bitmapNode, VirtualFileSystem vfs)
+    {
+        if (bitmapNode.Parent is not { } parent)
+            return null;
+
+        int nextIndex = bitmapNode.EntryIndex + 1;
+        FsNode? tableNode = parent.Children.FirstOrDefault(c => c.EntryIndex == nextIndex && c.Kind == EntryKind.Font);
+        if (tableNode is null)
+            return null;
+
+        return vfs.ReadBytes(tableNode);
     }
 }

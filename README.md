@@ -85,9 +85,10 @@ Windows build bundles it via NuGet; on Linux, install it from your distro's pack
 - The per-scene data tables in *Runaway*'s scene archives (1536, 43659 and 704 bytes) -- purpose unknown.
   *Hollywood Monsters*' equivalents are understood: its playable scenes open with a fixed background,
   palette, region map, lookup pages and metadata block.
-- `RESOURCE.000` (fonts, UI atlas, localised text bitmaps) and *Runaway 1*'s `RESOURCE.001` (the character
-  sprite library): their codecs are only partly understood. Shown as hex dumps. The exception is the tail of
-  *Hollywood Monsters*' `RESOURCE.000`, whose last 14 entries are resident sound effects and play normally.
+- The localised text bitmaps in `RESOURCE.000` and *Runaway 1*'s `RESOURCE.001` (the character sprite
+  library): shown as hex dumps. The rest of *Runaway 1*'s `RESOURCE.000` does decode -- its three fonts,
+  the cursor atlas and the full-screen and UI rasters -- as does the tail of *Hollywood Monsters*'
+  `RESOURCE.000`, whose last 14 entries are resident sound effects and play normally.
 - Which character palette each *Hollywood Monsters* scene uses. The choice is compiled into `Monsters.exe`
   and is not recoverable from the archives, so some scenes tint their cast wrong above colour 207.
 - Animation timing. The files carry none; playback and APNG export use the rate you choose (15 fps by default).

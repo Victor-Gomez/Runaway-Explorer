@@ -354,6 +354,24 @@ public class GlobalAndVisemeArchiveTests
     }
 
     [Fact]
+    public void GlobalArchive_IsNotMistakenForRunaway2_WhenTheWholeHeaderIsRead()
+    {
+        // Runaway 1's entry 0 begins right after the 500-slot table, so the u32 at offset 20 reads as
+        // 4020 -- which is also a valid Runaway 2 table_half_bytes. Handing the reader 8,192 bytes, as
+        // the stream overload does, used to be enough for the Runaway 2 branch to take the file and
+        // shatter it into hundreds of plausible fragments.
+        byte[] a = SyntheticArchives.Global([new byte[10], null, new byte[3]]);
+        var padded = new byte[Math.Max(a.Length, 9000)];
+        a.CopyTo(padded, 0);
+
+        List<ArchiveEntry> entries = GlobalArchive.ReadEntries(new MemoryStream(padded));
+
+        Assert.Equal(2, entries.Count);
+        Assert.Equal(new ArchiveEntry(0, 0xFB4, 10), entries[0]);
+        Assert.Equal(new ArchiveEntry(2, 0xFB4 + 10, 3), entries[1]);
+    }
+
+    [Fact]
     public void VisemeArchive_SixByteCatalogue()
     {
         byte[] a = SyntheticArchives.Visemes([new byte[] { 0, 1, 2 }, null, new byte[] { 5 }]);

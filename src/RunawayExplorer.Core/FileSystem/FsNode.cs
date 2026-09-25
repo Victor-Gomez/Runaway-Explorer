@@ -65,6 +65,9 @@ public enum EntryKind
     /// <summary>An entry of <c>RESOURCE.000</c> (fonts, UI atlas, localised bitmaps): shown as a hex dump.</summary>
     GlobalData,
 
+    /// <summary>A decoded font glyph bitmap from <c>RESOURCE.000</c>: outlined glyphs rendered as an image.</summary>
+    Font,
+
     /// <summary>A loose file on disk that no decoder claims: shown as a hex dump.</summary>
     RawFile,
 }

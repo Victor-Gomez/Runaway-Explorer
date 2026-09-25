@@ -31,6 +31,7 @@ public sealed class FsNodeViewModel : INotifyPropertyChanged
         [EntryKind.Viseme] = "DataTypeIcon",
         [EntryKind.Dialogue] = "DataTypeIcon",
         [EntryKind.GlobalData] = "DataTypeIcon",
+        [EntryKind.Font] = "ImageTypeIcon",
         [EntryKind.RawFile] = "RawFileTypeIcon",
     };
 

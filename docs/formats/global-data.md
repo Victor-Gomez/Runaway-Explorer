@@ -20,6 +20,13 @@ Contains global textures and localized typography.
 0xFB4: <entry data>
 ```
 
+The `u32` at `0x014` is entry 0's offset, and because entry 0 begins immediately after the table it
+always reads as `0xFB4` (4,020). That is also a valid *Runaway 2* `table_half_bytes`, so a reader that
+sniffs for the *Runaway 2* header before recognising this layout takes the file apart into hundreds of
+plausible fragments instead of its 151 real entries — and whether it does so depends on how many header
+bytes it happened to read, since the *Runaway 2* branch needs 8,064 of them. Recognise `0x014 == 0xFB4`
+as *Runaway 1* first.
+
 #### Hollywood Monsters layout
 
 *Hollywood Monsters* puts a single byte in front of the table and uses 100 slots, so entry 0 begins at 801:
@@ -34,24 +41,156 @@ Contains global textures and localized typography.
 Its entries are UI and font art, plus the shared 80-colour palette block that completes every scene's
 colour table — see [palettes.md](palettes.md).
 
-#### Known payload offsets (*Runaway 1*)
+#### Known payload slots (*Runaway 1*) (**verified**)
 
-| Offset | Size | Purpose | Encoding |
-|---|---|---|---|
-| `0x3D7CF4C` | 49 KB | Regular font atlas (~184 glyphs) | 17-level alpha RLE |
-| `0x56BD07C` | 39 KB | Bold font atlas (~182 glyphs) | 17-level alpha RLE |
-| `0x3D898F4` | ~1.5 MB | UI sprite atlas (700 px wide) | Raw RGB565 |
-| `0x3D7FA41`… | ~46 MB | Localized text bitmap region | Font RLE strings |
+Quoting these as raw file offsets hides that every one of them is simply the start of a slot, so
+they are listed by slot index here. The offsets are the ones a 500-slot table yields on the
+shipped Spanish Steam build.
 
-#### Font RLE encoding
+| Slot | Offset | Size | Purpose | Encoding |
+|---|---|---|---|---|
+| 112–115 | `0x35EB4EC`… | 976,320 each | Mouse cursor atlas, 904×540 | Raw RGB565 over key `0x6841` |
+| 116, 117 | `0x39A4BEC`, `0x3A789EC` | 867,840 each | Inventory item icons, 904×480 | Raw RGB565, same key |
+| 125 | `0x3D7CF4C` | 50,719 | Regular font glyph bitmap, 181 glyphs | Outline/fill shade, see below |
+| 126 | `0x3D8956B` | 905 | Glyph table for slot 125 | 181 × 5-byte records |
+| 127–130 | `0x3D898F4`… | 103,600 each | UI sprite strips, 700×74 | Raw RGB565 |
+| 131 | `0x3DEEBB4` | 1,228,800 | Inventory screen, 1024×600 | Raw RGB565 |
+| 132 | `0x3F1ABB4` | 1,228,800 | Main menu / options panel, 1024×600 | Raw RGB565 |
+| 143–147, 151, 158 | `0x50E107C`… | 1,228,800 each | Full-screen item close-ups, 1024×600 | Raw RGB565 |
+| 148 | `0x56BD07C` | 39,848 | Bold font glyph bitmap, 181 glyphs | Outline/fill shade, see below |
+| 149 | `0x56C6C24` | 905 | Glyph table for slot 148 | 181 × 5-byte records |
+| 161 | `0x692FCF5` | 15,842 | Small font glyph bitmap, 150 glyphs | Outline/fill shade, see below |
+| 162 | `0x6933AD7` | 750 | Glyph table for slot 161 | 150 × 5-byte records |
 
-Glyphs and pre-rendered string bitmaps use a dedicated run-length encoding with 17 alpha shades:
+Slot 131 is the **inventory** screen — the leather wall with the logo and the character portrait
+oval — and slot 132 is the **menu**, which is easy to get backwards: 131 looks like a title
+backdrop, but 132 carries the volume knob, the brightness lever and the two columns of five
+setting holes that the shipped menu draws its LOAD / SAVE / ERASE / PLAY / EXIT column over.
+
+#### Fonts (**verified, byte-exact on all three atlases**)
+
+A font is **two** slots: a glyph bitmap and, in the slot immediately after it, a glyph table. The
+table is what makes the bitmap readable, and looking for it is what turns the font from
+"~184 glyphs separated by blank rows" into an exact decode.
 
 ```text
-byte 0x00 .. 0x10: Pixel with alpha value (0x00 = transparent, 0x10 = opaque)
-byte 0x11:         End of scanline
-byte 0x12:         Background fill pixel
+Glyph table (905 bytes = 181 records, or 750 = 150 for the small font):
+    Record[N] × {
+        u16 Offset      -- byte offset into the glyph bitmap
+        u8  Top         -- blank rows above the glyph on its line
+        u8  Height
+        u8  Width
+    }
 ```
+
+The records **tile the glyph bitmap exactly**: each one ends where the next begins and the last ends
+on the final byte of the entry. That is the format check, and it holds on all three *Runaway 1*
+fonts (181 + 181 + 150 glyphs, 50,719 + 39,848 + 15,842 bytes).
+
+`Top + Height` is the baseline and is near enough constant per font — 23 for the regular face, 22
+for the bold one — so `Top` positions a glyph on the line and the line height is `max(Top +
+Height)`.
+
+##### The glyph bitmap is not run-length encoded, and it is not an alpha map
+
+There is no RLE and no scanline marker. The bitmap is **one byte per pixel**, `Width` bytes per
+row, `Height` rows:
+
+```text
+byte 0x00 .. 0x10: Shade, 17 steps along a ramp from the OUTLINE colour (0x00)
+                   to the FILL colour (0x10). All of these are opaque.
+byte 0x11:         Transparent — hugs the glyph and fills its counters
+byte 0x12:         Transparent — the space beyond
+```
+
+The glyphs are **outlined, not antialiased**, so drawing one takes two colours rather than one.
+Reading the byte as an alpha value and blending towards the background throws the outline away:
+`0x00` is the darkest ink, not "invisible". A bold `O` makes it plain — `0x00` traces both the
+outer and the inner edge of the ring, `0x10` fills the stroke, `0x11` sits in the counter and in
+a one-pixel band all round, and `0x12` is everything further out:
+
+```text
+12 12 12 12 12 12 11 11 11 11 11 11 11 12 12 12 12 12
+12 12 12 12 12 11 00 00 00 00 00 00 00 11 11 12 12 12
+12 12 12 11 11 00 01 05 07 07 07 06 02 00 00 11 12 12
+12 12 11 00 00 07 0f 10 10 10 10 10 10 0a 01 00 11 12
+12 11 00 01 0d 10 10 10 10 10 10 10 10 10 0d 01 00 11
+...
+```
+
+`0x11` and `0x12` are both transparent when drawing; the distinction is presumably what the
+original renderer used to lay the outline down.
+
+Reading `0x11` as "end of scanline" is the other trap. It decodes with no unexpected bytes —
+every byte is a valid code either way — and produces a tall narrow column that segments into
+hundreds of fragments instead of glyphs, so the error looks like a segmentation problem rather
+than a wrong premise. There is nothing to segment: the table already gives every glyph's width
+and height.
+
+##### Glyph order
+
+The glyphs are ordered by the **Spanish alphabet**, not by any character set, so a character maps
+to an index only through a table:
+
+| Index | Glyphs |
+|---|---|
+| 0–25 | `A`–`Z` |
+| 26–39 | `a`–`n` |
+| 40 | `ñ` |
+| 41–52 | `o`–`z` |
+| 53–57 | `á é í ó ú` |
+| 58–67 | `0`–`9` |
+| 68–79 | `(` `)` `-` `+` `=` `<` `>` `/` `\` `'` `;` `.` |
+| 80–95 | `:` `"` `¡` `!` `¿` `?` `Ñ` `[` `]` `#` `´` `▶` `` ` `` `ß` `Ç` `ç` |
+| 96–111 | `à è ì ò ù` `Á É Í Ó Ú` `©` `¯` `ü Ü` `«` `»` |
+| 112–118 | `$` `&` `®` `▲` `▼` `●` `@` |
+| 119–180 | Czech, Hungarian and Polish letters, `Œ`/`œ`, the remaining accented vowels, ending on an empty box |
+
+`ñ` sitting between `n` and `o` rather than after `z` is the giveaway that this is a collation
+order and not a code page. All three fonts share it — the small font is the same list truncated at
+150 — so it is a property of the engine, not of one atlas. The bold face is caps-only: its
+lower-case slots draw capitals.
+
+The empty box at the end of the full tables is the obvious fallback for an unmapped character.
+
+##### Which font goes where
+
+The shipped menu is set in the **bold** face — which is the caps-only one, and every label there
+is caps. Sampled off a screenshot of the original, it draws the fill white (254, 253, 253) over a
+black outline (12, 0, 0), and an entry that is unavailable in white's place gets a muted warm grey
+(118, 102, 100), outline and all.
+
+The glyphs carry no advance width, and laying the bold face out with zero letter spacing
+reproduces the original's label widths, so the engine simply butts the glyphs together. A space
+has no glyph at all.
+
+##### Pre-rendered strings
+
+`FORMATS.md` describes the ~46 MB language-varying region from `0x3D7FA41` as pre-rendered string
+bitmaps in "the font RLE format". That offset falls **inside slot 125**, so it is not the start of
+anything; the claim is about the region of slots that differs between localised builds, not about
+a distinct payload. With the glyph tables decoded, a reader can compose strings from the fonts
+directly and does not need those bitmaps.
+
+##### Other games
+
+Checked and **not** present: *Runaway 2* and *Runaway 3* have no slot whose contents chain as a
+glyph table of this shape, so their fonts use some other scheme.
+
+#### Cursor atlas (*Runaway 1*) (**verified**)
+
+Slot 112 is a 904×540 RGB565 raster holding every mouse cursor, over the key colour `0x6841`
+(RGB 104, 8, 8), and it carries no index — the sprites have to be found by scanning.
+
+Rows that are entirely key colour separate horizontal bands; only the first band (y 8–53) holds
+cursors, and the bands below it hold other interface art. Within the band, columns that are
+entirely key colour separate the sprites, but **not every gap is a separator**: gaps inside a
+sprite (between the arms of the crosshair) are 1 px and gaps between sprites are 12 px or more, so
+runs closer together than a threshold anywhere in 3–9 px belong to the same sprite. Every
+threshold in that range yields the same **15** cursors, 23–46 px wide: crosshair, magnifier, hand,
+speech balloon, four diagonal exit arrows, then a run of morph frames.
+
+Hotspots are not in the atlas; they live in the executable.
 
 ### 2. `Resource.001` — character sprite library
 

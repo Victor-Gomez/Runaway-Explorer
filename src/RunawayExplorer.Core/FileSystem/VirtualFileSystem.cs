@@ -614,6 +614,52 @@ public sealed class VirtualFileSystem
         using (FileStream f = File.OpenRead(path))
             entries = GlobalArchive.ReadEntries(f, gameVersion);
 
+        // Build an index by slot for fast neighbour lookup.
+        var byIndex = new Dictionary<int, ArchiveEntry>();
+        foreach (ArchiveEntry e in entries)
+            byIndex[e.Index] = e;
+
+        // Pre-classify: probe pairs for font glyph tables, and individual entries for cursor atlas.
+        var fontBitmapSlots = new HashSet<int>();
+        var fontTableSlots = new HashSet<int>();
+        var cursorAtlasSlots = new HashSet<int>();
+
+        if (gameVersion == GameVersion.Runaway1)
+        {
+            using FileStream f = File.OpenRead(path);
+
+            foreach (ArchiveEntry e in entries)
+            {
+                // Font detection: if the next slot exists and its contents validate as a glyph table
+                // whose records tile this entry exactly, mark both slots.
+                if (byIndex.TryGetValue(e.Index + 1, out ArchiveEntry next))
+                {
+                    if (next.Size >= FontDecoder.RecordSize && next.Size <= 10_000 && next.Size % FontDecoder.RecordSize == 0
+                        && e.Size > 0 && e.Size <= 200_000)
+                    {
+                        var tableData = new byte[next.Size];
+                        f.Position = next.Offset;
+                        f.ReadExactly(tableData);
+                        if (FontDecoder.IsGlyphTable(tableData, e.Size))
+                        {
+                            fontBitmapSlots.Add(e.Index);
+                            fontTableSlots.Add(next.Index);
+                        }
+                    }
+                }
+
+                // Cursor atlas detection: 904×540 RGB565 with key colour present.
+                if (e.Size == CursorAtlasDecoder.AtlasWidth * CursorAtlasDecoder.AtlasHeight * 2)
+                {
+                    var head = new byte[Math.Min((int)e.Size, CursorAtlasDecoder.AtlasWidth * 20 * 2)];
+                    f.Position = e.Offset;
+                    f.ReadExactly(head);
+                    if (CursorAtlasDecoder.LooksLikeAtlas(head))
+                        cursorAtlasSlots.Add(e.Index);
+                }
+            }
+        }
+
         foreach (ArchiveEntry e in entries)
         {
             // Hollywood Monsters keeps its resident sound effects -- the ones that must be audible in every
@@ -622,16 +668,59 @@ public sealed class VirtualFileSystem
             bool residentSound = gameVersion == GameVersion.HollywoodMonsters
                 && e.Index >= ResidentSoundFirstEntry && e.Index <= ResidentSoundLastEntry;
 
+            EntryKind kind;
+            ImageInfo? image = null;
+            string label;
+
+            if (residentSound)
+            {
+                kind = EntryKind.Ambient;
+                label = $"e{e.Index:000}  {FormatSize(e.Size)}";
+            }
+            else if (fontBitmapSlots.Contains(e.Index))
+            {
+                kind = EntryKind.Font;
+                label = $"e{e.Index:000}  font bitmap, {FormatSize(e.Size)}";
+            }
+            else if (fontTableSlots.Contains(e.Index))
+            {
+                int glyphs = (int)(e.Size / FontDecoder.RecordSize);
+                kind = EntryKind.Font;
+                label = $"e{e.Index:000}  glyph table, {glyphs} glyphs";
+            }
+            else if (cursorAtlasSlots.Contains(e.Index))
+            {
+                kind = EntryKind.Background;
+                image = new ImageInfo
+                {
+                    Width = CursorAtlasDecoder.AtlasWidth,
+                    Height = CursorAtlasDecoder.AtlasHeight,
+                };
+                label = $"e{e.Index:000}  cursor atlas {CursorAtlasDecoder.AtlasWidth}×{CursorAtlasDecoder.AtlasHeight}";
+            }
+            else if (gameVersion == GameVersion.Runaway1 && TryGlobalRaster(e.Size, out int gw, out int gh))
+            {
+                kind = EntryKind.Background;
+                image = new ImageInfo { Width = gw, Height = gh };
+                label = $"e{e.Index:000}  {GlobalRasterName(e.Index, gw)} {gw}×{gh}";
+            }
+            else
+            {
+                kind = EntryKind.GlobalData;
+                label = $"e{e.Index:000}  {FormatSize(e.Size)}";
+            }
+
             Attach(node, new FsNode
             {
                 NodeType = FsNodeType.File | FsNodeType.InArchive,
-                Kind = residentSound ? EntryKind.Ambient : EntryKind.GlobalData,
+                Kind = kind,
                 Name = $"e{e.Index:000}",
-                FriendlyName = $"e{e.Index:000}  {FormatSize(e.Size)}",
+                FriendlyName = label,
                 Offset = e.Offset,
                 Size = e.Size,
                 EntryIndex = e.Index,
                 ArchivePath = path,
+                Image = image,
                 Audio = residentSound ? HollywoodMonstersSoundPcm : null,
             });
         }
@@ -1299,6 +1388,45 @@ public sealed class VirtualFileSystem
     // ---------------------------------------------------------------------------------------------
     // Formatting helpers shared by the labels
     // ---------------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// The geometries the raw RGB565 rasters of Runaway 1's <c>RESOURCE.000</c> come in. Nothing in the
+    /// archive records a width, so an entry is recognised by its exact size -- see
+    /// <c>docs/formats/global-data.md</c>.
+    /// </summary>
+    private static readonly (int Width, int Height)[] GlobalRasterGeometries =
+    [
+        (Rgb565.ScreenWidth, Rgb565.ScreenHeight), // menu panel, inventory screen, item close-ups
+        (904, 480),                                // inventory item icon sheets
+        (700, 74),                                 // UI sprite strips
+    ];
+
+    private static bool TryGlobalRaster(long size, out int width, out int height)
+    {
+        foreach ((int w, int h) in GlobalRasterGeometries)
+        {
+            if (size == (long)w * h * 2)
+            {
+                (width, height) = (w, h);
+                return true;
+            }
+        }
+
+        (width, height) = (0, 0);
+        return false;
+    }
+
+    /// <summary>What a recognised <c>RESOURCE.000</c> raster is, for the tree label.</summary>
+    private static string GlobalRasterName(int index, int width) => index switch
+    {
+        // Easy to get backwards: 131 looks like a title backdrop, but 132 is the one carrying the volume
+        // knob, the brightness lever and the setting holes the menu draws its entries over.
+        131 => "inventory screen",
+        132 => "menu panel",
+        _ when width == 904 => "item icons",
+        _ when width == 700 => "UI strip",
+        _ => "screen",
+    };
 
     public static string FormatSize(long bytes)
     {
