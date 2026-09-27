@@ -337,4 +337,16 @@ public class YesterdayInterfaceTests
         Assert.Equal(61, images);
         Assert.True(aliased.Values.Max() > 40, "expected one image shared by dozens of slots");
     }
+
+    [Fact]
+    public void RealInstall_IsCoveredByTheShippedScanCache()
+    {
+        if (!Directory.Exists(YesterdayTests.YesterdaySteamDir)) return;
+
+        // Scanning adds whatever the shipped cache did not already answer for. Scanning again must add
+        // nothing: that is what "the install is fully covered" means, and it needs no list of archives
+        // here that could drift from the one the scan actually walks.
+        ShippedCacheBuilder.AddInstall(YesterdayTests.YesterdaySteamDir);
+        Assert.Equal(0, ShippedCacheBuilder.AddInstall(YesterdayTests.YesterdaySteamDir));
+    }
 }

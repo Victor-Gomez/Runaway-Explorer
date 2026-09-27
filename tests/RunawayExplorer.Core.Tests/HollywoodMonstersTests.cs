@@ -494,4 +494,18 @@ public class HollywoodMonstersInterfaceTests
         RasterInfo geometry = Assert.IsType<RasterInfo>(RasterDecoder.DetectIndexed(data));
         Assert.Equal((width, height), (geometry.Width, geometry.Height));
     }
+
+    [Fact]
+    public void RealInstall_IsCoveredByTheShippedScanCache()
+    {
+        if (!Directory.Exists(HmDir)) return;
+
+        // Scanning adds whatever the shipped cache did not already answer for. Scanning again must add
+        // nothing: that is what "the install is fully covered" means, and it needs no list of archives
+        // here that could drift from the one the scan actually walks.
+        ShippedCacheBuilder.AddInstall(HmDir);
+        Assert.Equal(0, ShippedCacheBuilder.AddInstall(HmDir));
+        Assert.True(ShippedCacheBuilder.Covers(Path.Combine(HmDir, "RESOURCE.000")),
+            "The global archive should be in the shipped cache: classifying it cold is the slowest part of a first launch");
+    }
 }

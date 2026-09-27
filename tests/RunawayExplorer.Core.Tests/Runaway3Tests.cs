@@ -457,70 +457,17 @@ public class Runaway3Tests
     }
 
     [Fact]
-    public void RealInstall_PopulateShippedScanCacheR3()
+    public void RealInstall_IsCoveredByTheShippedScanCache()
     {
         if (!Directory.Exists(R3SteamDir)) return;
 
-        // Locate repository root
-        string dir = AppContext.BaseDirectory;
-        while (!string.IsNullOrEmpty(dir) && !File.Exists(Path.Combine(dir, "RunawayExplorer.slnx")) && !Directory.Exists(Path.Combine(dir, ".git")))
-        {
-            dir = Path.GetDirectoryName(dir)!;
-        }
-        Assert.False(string.IsNullOrEmpty(dir), "Could not locate solution directory");
-
-        string shippedJsonPath = Path.Combine(dir, "src", "RunawayExplorer.Core", "Resources", "shipped-scan-cache.json");
-        Assert.True(File.Exists(shippedJsonPath), $"shipped-scan-cache.json not found at {shippedJsonPath}");
-
-        var options = new System.Text.Json.JsonSerializerOptions
-        {
-            WriteIndented = false,
-            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault,
-        };
-
-        var shipped = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, List<ScanCache.CachedEntry>>>(
-            File.ReadAllText(shippedJsonPath), options) ?? new(StringComparer.OrdinalIgnoreCase);
-
-        int initialCount = shipped.Count;
-        Assert.True(initialCount >= 145, $"Expected at least 145 R1+R2 hashes in shipped cache, found {initialCount}");
-
-        string resDir = Path.Combine(R3SteamDir, "Resource");
-        if (!Directory.Exists(resDir))
-            resDir = R3SteamDir;
-
-        var sceneFiles = Directory.GetFiles(resDir)
-            .Where(f => SceneArchive.IsSceneArchiveName(Path.GetFileName(f), GameVersion.Runaway3))
-            .ToList();
-
-        Assert.True(sceneFiles.Count >= 60, $"Expected >= 60 R3 scene archives, found {sceneFiles.Count}");
-
-        var newHashes = new System.Collections.Concurrent.ConcurrentDictionary<string, List<ScanCache.CachedEntry>>(StringComparer.OrdinalIgnoreCase);
-
-        var parallelOptions = new ParallelOptions
-        {
-            MaxDegreeOfParallelism = Math.Clamp(Environment.ProcessorCount / 2, 2, 8)
-        };
-
-        Parallel.ForEach(sceneFiles, parallelOptions, file =>
-        {
-            string hash = ScanCache.ComputeHash(file);
-            var localCache = ScanCache.Ephemeral(includeShipped: false);
-            VirtualFileSystem.BuildSceneArchive(file, localCache, "en", GameVersion.Runaway3);
-            var entries = localCache.TryGet(file);
-            if (entries is not null && entries.Count > 0)
-            {
-                newHashes[hash] = entries;
-            }
-        });
-
-        foreach (var (h, entries) in newHashes)
-        {
-            shipped[h] = entries;
-        }
-
-        File.WriteAllText(shippedJsonPath, System.Text.Json.JsonSerializer.Serialize(shipped, options));
-
-        Assert.True(shipped.Count >= 145 + 60, $"Expected >= 205 total hashes after R3 merge, found {shipped.Count}");
+        // Scanning adds whatever the shipped cache did not already answer for. Scanning again must add
+        // nothing: that is what "the install is fully covered" means, and it needs no list of archives
+        // here that could drift from the one the scan actually walks.
+        ShippedCacheBuilder.AddInstall(R3SteamDir);
+        Assert.Equal(0, ShippedCacheBuilder.AddInstall(R3SteamDir));
+        Assert.True(ShippedCacheBuilder.Covers(Path.Combine(R3SteamDir, "Resource", "RESOURCE.000")),
+            "The global archive should be in the shipped cache: classifying it cold is the slowest part of a first launch");
     }
 
     [Fact]

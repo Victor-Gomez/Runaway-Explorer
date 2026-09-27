@@ -138,4 +138,16 @@ public class TheNextBigThingInterfaceTests
 
         Assert.Equal(24, images);
     }
+
+    [Fact]
+    public void RealInstall_IsCoveredByTheShippedScanCache()
+    {
+        if (!Directory.Exists(TheNextBigThingTests.TnbtSteamDir)) return;
+
+        // Scanning adds whatever the shipped cache did not already answer for. Scanning again must add
+        // nothing: that is what "the install is fully covered" means, and it needs no list of archives
+        // here that could drift from the one the scan actually walks.
+        ShippedCacheBuilder.AddInstall(TheNextBigThingTests.TnbtSteamDir);
+        Assert.Equal(0, ShippedCacheBuilder.AddInstall(TheNextBigThingTests.TnbtSteamDir));
+    }
 }

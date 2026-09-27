@@ -23,7 +23,9 @@ headers; the formats were reverse-engineered from the Steam releases and are wri
 
 - **Whole-install browsing.** Supports all six games (*Hollywood Monsters*, *Runaway 1*, *Runaway 2*, *Runaway 3*, *The Next BIG Thing*, and *Yesterday*). Every archive is scanned once and its entries classified by what they
   actually are. The tree is organised by kind: Scenes, Music, Ambient & SFX, Cinematic Audio, Voice,
-  Lip-sync, Video, Dialogue, Global Data. Includes a pre-computed hash-based scan cache so first-time loading is near-instant.
+  Lip-sync, Video, Dialogue, Global Data. Includes a pre-computed hash-based scan cache covering every scene and global archive of all six
+  games, so a first launch on a stock install is near-instant instead of a cold scan of several
+  hundred megabytes.
 - **Backgrounds, scene masks and overlays.** Displays full-screen scene backgrounds, positioned overlays
   (props, foreground layers, title cards, UI), and scene interaction masks (walkboxes, hotspots, depth planes).
   Overlays and scene masks can be drawn directly on their scene's background at authored coordinates, with

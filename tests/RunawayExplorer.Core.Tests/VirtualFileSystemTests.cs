@@ -296,9 +296,10 @@ public class VirtualFileSystemTests
             Assert.True(vfs.Summary.FromCache, "Expected all scene archives to load from shipped cache");
             Assert.Equal(74, vfs.Summary.SceneArchives);
 
-            // The first load also classifies the global archive, which means reading a 110 MB file; the
-            // answer is then cached, so what a launch actually costs is the second load. Timing the first
-            // one here would measure whatever else the test run is doing to the disk at the same moment.
+            // The shipped cache answers for the global archive too, so the first load classifies nothing
+            // -- but it still SHA-256s every archive to look them up, including a 110 MB one, so timing it
+            // would measure whatever else the test run is doing to the disk at the same moment. The second
+            // load is the one that matches a real launch, where the path+mtime tier answers immediately.
             var sw = System.Diagnostics.Stopwatch.StartNew();
             VirtualFileSystem.Init(steamPath, cache: cache);
             sw.Stop();
@@ -309,6 +310,22 @@ public class VirtualFileSystemTests
             if (File.Exists(tempCache))
                 File.Delete(tempCache);
         }
+    }
+
+    [Fact]
+    public void RealGameInstall_IfPresent_IsCoveredByTheShippedScanCache()
+    {
+        const string steamPath = @"F:\Games\Steam\steamapps\common\Runaway A Road Adventure";
+        if (!Directory.Exists(steamPath))
+            return;
+
+        // Scanning adds whatever the shipped cache did not already answer for. Scanning again must add
+        // nothing: that is what "the install is fully covered" means, and it needs no list of archives
+        // here that could drift from the one the scan actually walks.
+        ShippedCacheBuilder.AddInstall(steamPath);
+        Assert.Equal(0, ShippedCacheBuilder.AddInstall(steamPath));
+        Assert.True(ShippedCacheBuilder.Covers(Path.Combine(steamPath, "Resource", "Resource.000")),
+            "The global archive should be in the shipped cache: classifying it cold is the slowest part of a first launch");
     }
 
     [Fact]

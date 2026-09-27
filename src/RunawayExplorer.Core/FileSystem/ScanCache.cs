@@ -84,6 +84,20 @@ public sealed class ScanCache
 
     public string Path { get; }
 
+    /// <summary>
+    /// A snapshot of everything this cache knows, keyed by content hash. The shipped cache is generated
+    /// by scanning an install with an empty cache and writing this out, so whatever a scan remembers is
+    /// what gets shipped -- there is no second list of archives to keep in step.
+    /// </summary>
+    public IReadOnlyDictionary<string, List<CachedEntry>> ContentHashes
+    {
+        get
+        {
+            lock (_gate)
+                return new Dictionary<string, List<CachedEntry>>(_doc.Hashes, StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
     private ScanCache(string path, Document doc, bool includeShipped = true)
     {
         Path = path;
@@ -269,6 +283,17 @@ public sealed class ScanCache
         }
     }
 
+    /// <summary>
+    /// The pre-computed cache shipped with the application: content hash to classification, behind the
+    /// same <see cref="FormatVersion"/> the user's own cache is gated on. Without that gate a classifier
+    /// change would keep being overridden by whatever the last release happened to believe.
+    /// </summary>
+    public sealed class ShippedDocument
+    {
+        [JsonPropertyName("v")] public int Version { get; set; } = FormatVersion;
+        [JsonPropertyName("h")] public Dictionary<string, List<CachedEntry>> Hashes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    }
+
     private static Dictionary<string, List<CachedEntry>> LoadShippedCache()
     {
         var result = new Dictionary<string, List<CachedEntry>>(StringComparer.OrdinalIgnoreCase);
@@ -278,14 +303,7 @@ public sealed class ScanCache
         {
             using Stream? stream = typeof(ScanCache).Assembly.GetManifestResourceStream("RunawayExplorer.Core.Resources.shipped-scan-cache.json");
             if (stream is not null)
-            {
-                var dict = JsonSerializer.Deserialize<Dictionary<string, List<CachedEntry>>>(stream, Options);
-                if (dict is not null)
-                {
-                    foreach ((string k, List<CachedEntry> v) in dict)
-                        result[k] = v;
-                }
-            }
+                Merge(JsonSerializer.Deserialize<ShippedDocument>(stream, Options), result);
         }
         catch (Exception)
         {
@@ -298,12 +316,7 @@ public sealed class ScanCache
             if (File.Exists(extPath))
             {
                 using FileStream fs = File.OpenRead(extPath);
-                var extDict = JsonSerializer.Deserialize<Dictionary<string, List<CachedEntry>>>(fs, Options);
-                if (extDict is not null)
-                {
-                    foreach ((string k, List<CachedEntry> v) in extDict)
-                        result[k] = v;
-                }
+                Merge(JsonSerializer.Deserialize<ShippedDocument>(fs, Options), result);
             }
         }
         catch (Exception)
@@ -311,5 +324,13 @@ public sealed class ScanCache
         }
 
         return result;
+
+        static void Merge(ShippedDocument? doc, Dictionary<string, List<CachedEntry>> into)
+        {
+            if (doc is null || doc.Version != FormatVersion || doc.Hashes is null)
+                return;
+            foreach ((string k, List<CachedEntry> v) in doc.Hashes)
+                into[k] = v;
+        }
     }
 }
