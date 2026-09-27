@@ -315,7 +315,13 @@ public sealed class VirtualFileSystem
             else if (upper == "RESOURCE.000")
             {
                 progress?.Invoke($"Reading {name}");
-                Attach(global, BuildGlobalArchive(path, gameVersion));
+                Attach(global, BuildGlobalArchive(path, gameVersion, cache));
+            }
+            else if (upper == "RESOURCE.IFZ")
+            {
+                // The Next BIG Thing and Yesterday have no RESOURCE.000; their interface art lives here.
+                progress?.Invoke($"Reading {name}");
+                Attach(global, BuildInterfaceArchive(path));
             }
             else
             {
@@ -600,7 +606,12 @@ public sealed class VirtualFileSystem
         return node;
     }
 
-    private static FsNode BuildGlobalArchive(string path, GameVersion gameVersion = GameVersion.Runaway1)
+    /// <summary>
+    /// <c>RESOURCE.IFZ</c>, the interface archive of The Next BIG Thing and Yesterday: menu screens,
+    /// cursors and the rest of the interface, stored as whole PNG and JPEG files. Entries that carry an
+    /// image header are classified by it; the rest are the interface's own tables and stay undecoded.
+    /// </summary>
+    private static FsNode BuildInterfaceArchive(string path)
     {
         var node = new FsNode
         {
@@ -609,6 +620,75 @@ public sealed class VirtualFileSystem
             ArchivePath = path,
             Size = new FileInfo(path).Length,
         };
+
+        using FileStream f = File.OpenRead(path);
+        List<ArchiveEntry> entries = InterfaceArchive.ReadEntries(f);
+
+        var head = new byte[64];
+        foreach (ArchiveEntry e in entries)
+        {
+            f.Position = e.Offset;
+            int read = f.Read(head, 0, (int)Math.Min(head.Length, e.Size));
+            ReadOnlySpan<byte> probe = head.AsSpan(0, read);
+
+            EntryKind kind = EntryKind.GlobalData;
+            ImageInfo? image = null;
+            string what = FormatSize(e.Size);
+
+            if (PngDecoder.TryGetDimensions(probe, out int w, out int h))
+            {
+                kind = EntryKind.Background;
+                image = new ImageInfo { Width = w, Height = h };
+                what = $"PNG {w}×{h}";
+            }
+            else if (JpegDecoder.IsJpeg(probe) && JpegDecoder.TryGetDimensions(probe, out w, out h))
+            {
+                kind = EntryKind.Background;
+                image = new ImageInfo { Width = w, Height = h };
+                what = $"JPEG {w}×{h}";
+            }
+            else if (BmpDecoder.TryReadHeader(probe, out w, out h))
+            {
+                kind = EntryKind.Background;
+                image = new ImageInfo { Width = w, Height = h };
+                what = $"bitmap {w}×{h}";
+            }
+
+            Attach(node, new FsNode
+            {
+                NodeType = FsNodeType.File | FsNodeType.InArchive,
+                Kind = kind,
+                Name = $"e{e.Index:000}",
+                FriendlyName = $"e{e.Index:000}  {what}",
+                Offset = e.Offset,
+                Size = e.Size,
+                EntryIndex = e.Index,
+                ArchivePath = path,
+                Image = image,
+            });
+        }
+
+        return node;
+    }
+
+    private static FsNode BuildGlobalArchive(string path, GameVersion gameVersion = GameVersion.Runaway1, ScanCache? cache = null)
+    {
+        var node = new FsNode
+        {
+            NodeType = FsNodeType.Directory,
+            Name = Path.GetFileName(path),
+            ArchivePath = path,
+            Size = new FileInfo(path).Length,
+        };
+
+        // Classifying a global archive means reading it: hundreds of megabytes through the sprite walk
+        // and the stride sweep. Remember the answer the same way the scene archives do.
+        if (cache?.TryGet(path) is { Count: > 0 } remembered)
+        {
+            foreach (ScanCache.CachedEntry c in remembered)
+                AttachGlobalEntry(node, path, c, gameVersion);
+            return node;
+        }
 
         List<ArchiveEntry> entries;
         using (FileStream f = File.OpenRead(path))
@@ -619,12 +699,36 @@ public sealed class VirtualFileSystem
         foreach (ArchiveEntry e in entries)
             byIndex[e.Index] = e;
 
-        // Pre-classify: probe pairs for font glyph tables, and individual entries for cursor atlas.
+        // Pre-classify: probe pairs for font glyph tables, and individual entries for the cursor atlas and
+        // for whole BMP files. Which probes are worth running is decided by the game, not by the bytes:
+        // only Runaway 1 chains its fonts this way, only Runaway 1 and 2 store the cursors as a keyed
+        // raster, and only Runaway 3 keeps its interface art as BMP.
         var fontBitmapSlots = new HashSet<int>();
         var fontTableSlots = new HashSet<int>();
         var cursorAtlasSlots = new HashSet<int>();
+        var bmpSlots = new Dictionary<int, (int Width, int Height)>();
 
-        if (gameVersion == GameVersion.Runaway1)
+        var rasterSlots = new System.Collections.Concurrent.ConcurrentDictionary<int, (int Width, int Height)>();
+        var spriteSlots = new System.Collections.Concurrent.ConcurrentDictionary<int, ImageInfo>();
+
+        // Runaway 2 and 3 keep the same fonts with a wider offset in each glyph record; the rest of the
+        // pairing rule is unchanged.
+        bool probeFonts = gameVersion is GameVersion.Runaway1 or GameVersion.Runaway2 or GameVersion.Runaway3;
+        int fontRecordSize = FontDecoder.RecordSizeFor(gameVersion);
+        bool probeCursors = gameVersion is GameVersion.Runaway1 or GameVersion.Runaway2;
+        bool probeBmp = gameVersion == GameVersion.Runaway3;
+
+        // The RGB565 games' rasters are recognised by their exact size, and a size can lie: Runaway 2
+        // stores one long data stream in consecutive slots of exactly one screen's worth of bytes
+        // (e289-e291), which read as pixels are noise. Confirm the pixels before calling it a picture.
+        bool probeRasters = gameVersion is GameVersion.Runaway1 or GameVersion.Runaway2 or GameVersion.Runaway3;
+
+        // The global archives carry animations as well as interface art -- the pointing hands and menu
+        // widgets, and in Runaway 2 and 3 whole characters. They are the scene archives' sprite format,
+        // self-contained rather than split over a pair of slots, and they walk byte-exact like any other.
+        bool probeSprites = gameVersion is GameVersion.Runaway1 or GameVersion.Runaway2 or GameVersion.Runaway3;
+
+        if (probeFonts || probeCursors || probeBmp || probeRasters || probeSprites)
         {
             using FileStream f = File.OpenRead(path);
 
@@ -632,15 +736,15 @@ public sealed class VirtualFileSystem
             {
                 // Font detection: if the next slot exists and its contents validate as a glyph table
                 // whose records tile this entry exactly, mark both slots.
-                if (byIndex.TryGetValue(e.Index + 1, out ArchiveEntry next))
+                if (probeFonts && byIndex.TryGetValue(e.Index + 1, out ArchiveEntry next))
                 {
-                    if (next.Size >= FontDecoder.RecordSize && next.Size <= 10_000 && next.Size % FontDecoder.RecordSize == 0
+                    if (next.Size >= fontRecordSize && next.Size <= 10_000 && next.Size % fontRecordSize == 0
                         && e.Size > 0 && e.Size <= 200_000)
                     {
                         var tableData = new byte[next.Size];
                         f.Position = next.Offset;
                         f.ReadExactly(tableData);
-                        if (FontDecoder.IsGlyphTable(tableData, e.Size))
+                        if (FontDecoder.IsGlyphTable(tableData, e.Size, fontRecordSize))
                         {
                             fontBitmapSlots.Add(e.Index);
                             fontTableSlots.Add(next.Index);
@@ -649,7 +753,7 @@ public sealed class VirtualFileSystem
                 }
 
                 // Cursor atlas detection: 904×540 RGB565 with key colour present.
-                if (e.Size == CursorAtlasDecoder.AtlasWidth * CursorAtlasDecoder.AtlasHeight * 2)
+                if (probeCursors && e.Size == CursorAtlasDecoder.AtlasWidth * CursorAtlasDecoder.AtlasHeight * 2)
                 {
                     var head = new byte[Math.Min((int)e.Size, CursorAtlasDecoder.AtlasWidth * 20 * 2)];
                     f.Position = e.Offset;
@@ -657,9 +761,104 @@ public sealed class VirtualFileSystem
                     if (CursorAtlasDecoder.LooksLikeAtlas(head))
                         cursorAtlasSlots.Add(e.Index);
                 }
+
+                // BMP detection: the whole file sits in the slot, header and all.
+                if (probeBmp && e.Size >= BmpDecoder.MinHeaderSize)
+                {
+                    var head = new byte[BmpDecoder.MinHeaderSize];
+                    f.Position = e.Offset;
+                    f.ReadExactly(head);
+                    if (BmpDecoder.TryReadHeader(head, out int bw, out int bh, out long bmpBytes) && bmpBytes <= e.Size)
+                        bmpSlots[e.Index] = (bw, bh);
+                }
             }
         }
 
+        // The sprite walk and the stride sweep both read and chew through the whole entry, and a global
+        // archive runs to hundreds of megabytes, so they go wide -- one file handle per worker -- the way
+        // the scene archives are classified.
+        if (probeSprites || probeRasters)
+        {
+            Parallel.ForEach(
+                entries.Where(e => !fontBitmapSlots.Contains(e.Index) && !fontTableSlots.Contains(e.Index)
+                    && !cursorAtlasSlots.Contains(e.Index) && !bmpSlots.ContainsKey(e.Index)),
+                () => File.OpenRead(path),
+                (e, state, f) =>
+                {
+                    if (e.Size is < SpriteAsset.RecordSize or > int.MaxValue)
+                        return f;
+
+                    // A head is enough to rule most entries out; only what survives is read in full.
+                    // A global archive runs to hundreds of megabytes and most of it is neither.
+                    var head = new byte[Math.Min(e.Size, GlobalProbeHeadBytes)];
+                    f.Position = e.Offset;
+                    f.ReadExactly(head);
+
+                    bool couldBeSprite = probeSprites && SpriteAsset.CouldBeSprite(head, e.Size);
+                    bool knownGeometry = probeRasters && TryGlobalRaster(gameVersion, e.Size, out _, out _);
+                    bool couldBeRaster = probeRasters && (knownGeometry || RasterDecoder.LooksLikeArtwork(head));
+                    if (!couldBeSprite && !couldBeRaster)
+                        return f;
+
+                    byte[] data;
+                    if (e.Size <= head.Length)
+                    {
+                        data = head;
+                    }
+                    else
+                    {
+                        data = new byte[e.Size];
+                        f.Position = e.Offset;
+                        f.ReadExactly(data);
+                    }
+
+                    // Sprite detection: the record table tiles the entry exactly, so a parse is proof.
+                    if (couldBeSprite && SpriteAsset.Parse(data) is { } sprite)
+                    {
+                        spriteSlots[e.Index] = new ImageInfo
+                        {
+                            X = sprite.Bounds.X,
+                            Y = sprite.Bounds.Y,
+                            Width = sprite.Bounds.Width,
+                            Height = sprite.Bounds.Height,
+                            Frames = sprite.FrameCount,
+                        };
+                        return f;
+                    }
+
+                    if (!couldBeRaster)
+                        return f;
+
+                    // Raster detection: the right size for one of this game's screens, and pixels that
+                    // behave like artwork rather than like the bytes of something else.
+                    if (TryGlobalRaster(gameVersion, e.Size, out int rw, out int rh))
+                    {
+                        if (RasterDecoder.LooksLikeArtwork(data, rw, rh))
+                            rasterSlots[e.Index] = (rw, rh);
+                    }
+                    else if (RasterDecoder.Detect(data) is { IsMask: false } detected
+                        && RasterDecoder.LooksLikeArtwork(data, detected.Width, detected.Height))
+                    {
+                        // Not one of the screen geometries: a picture of its own size, its width
+                        // recovered by the stride sweep exactly as a scene entry's would be.
+                        rasterSlots[e.Index] = (detected.Width, detected.Height);
+                    }
+
+                    return f;
+                },
+                f => f.Dispose());
+        }
+
+        if (!probeRasters)
+        {
+            foreach (ArchiveEntry e in entries)
+            {
+                if (TryGlobalRaster(gameVersion, e.Size, out int rw, out int rh))
+                    rasterSlots[e.Index] = (rw, rh);
+            }
+        }
+
+        var classifiedEntries = new List<ScanCache.CachedEntry>(entries.Count);
         foreach (ArchiveEntry e in entries)
         {
             // Hollywood Monsters keeps its resident sound effects -- the ones that must be audible in every
@@ -684,7 +883,7 @@ public sealed class VirtualFileSystem
             }
             else if (fontTableSlots.Contains(e.Index))
             {
-                int glyphs = (int)(e.Size / FontDecoder.RecordSize);
+                int glyphs = (int)(e.Size / fontRecordSize);
                 kind = EntryKind.Font;
                 label = $"e{e.Index:000}  glyph table, {glyphs} glyphs";
             }
@@ -698,11 +897,27 @@ public sealed class VirtualFileSystem
                 };
                 label = $"e{e.Index:000}  cursor atlas {CursorAtlasDecoder.AtlasWidth}×{CursorAtlasDecoder.AtlasHeight}";
             }
-            else if (gameVersion == GameVersion.Runaway1 && TryGlobalRaster(e.Size, out int gw, out int gh))
+            else if (bmpSlots.TryGetValue(e.Index, out (int Width, int Height) bmp))
             {
                 kind = EntryKind.Background;
+                image = new ImageInfo { Width = bmp.Width, Height = bmp.Height };
+                label = $"e{e.Index:000}  bitmap {bmp.Width}×{bmp.Height}";
+            }
+            else if (spriteSlots.TryGetValue(e.Index, out ImageInfo? sprite))
+            {
+                kind = sprite.Frames == 1 ? EntryKind.Overlay : EntryKind.Animation;
+                image = sprite;
+                string what = sprite.Frames == 1
+                    ? $"sprite {sprite.Width}×{sprite.Height}"
+                    : $"animation, {sprite.Frames} frames, {sprite.Width}×{sprite.Height}";
+                label = $"e{e.Index:000}  {what}";
+            }
+            else if (rasterSlots.TryGetValue(e.Index, out (int Width, int Height) raster))
+            {
+                (int gw, int gh) = raster;
+                kind = EntryKind.Background;
                 image = new ImageInfo { Width = gw, Height = gh };
-                label = $"e{e.Index:000}  {GlobalRasterName(e.Index, gw)} {gw}×{gh}";
+                label = $"e{e.Index:000}  {GlobalRasterName(gameVersion, e.Index, gw)} {gw}×{gh}";
             }
             else
             {
@@ -710,21 +925,33 @@ public sealed class VirtualFileSystem
                 label = $"e{e.Index:000}  {FormatSize(e.Size)}";
             }
 
-            Attach(node, new FsNode
-            {
-                NodeType = FsNodeType.File | FsNodeType.InArchive,
-                Kind = kind,
-                Name = $"e{e.Index:000}",
-                FriendlyName = label,
-                Offset = e.Offset,
-                Size = e.Size,
-                EntryIndex = e.Index,
-                ArchivePath = path,
-                Image = image,
-                Audio = residentSound ? HollywoodMonstersSoundPcm : null,
-            });
+            var classified = ScanCache.CachedEntry.From(e, new EntryClassification(kind, image));
+            classified.Label = label;
+            classifiedEntries.Add(classified);
+            AttachGlobalEntry(node, path, classified, gameVersion);
         }
+
+        cache?.Put(path, classifiedEntries);
         return node;
+    }
+
+    /// <summary>Hangs one classified global-archive entry on the archive node.</summary>
+    private static void AttachGlobalEntry(FsNode node, string path, ScanCache.CachedEntry c, GameVersion gameVersion)
+    {
+        bool residentSound = gameVersion == GameVersion.HollywoodMonsters && c.Kind == EntryKind.Ambient;
+        Attach(node, new FsNode
+        {
+            NodeType = FsNodeType.File | FsNodeType.InArchive,
+            Kind = c.Kind,
+            Name = $"e{c.Index:000}",
+            FriendlyName = c.Label ?? $"e{c.Index:000}  {FormatSize(c.Size)}",
+            Offset = c.Offset,
+            Size = c.Size,
+            EntryIndex = c.Index,
+            ArchivePath = path,
+            Image = c.Kind is EntryKind.GlobalData or EntryKind.Ambient or EntryKind.Font ? null : c.ToImageInfo(),
+            Audio = residentSound ? HollywoodMonstersSoundPcm : null,
+        });
     }
 
     private static FsNode LooseFile(string path)
@@ -1234,9 +1461,9 @@ public sealed class VirtualFileSystem
         if (GameVersion != GameVersion.HollywoodMonsters)
             return null;
 
-        bool isArchiveNode = node.IsDirectory && node.Parent?.Name == ScenesFolder;
+        bool isArchiveNode = node.IsDirectory && node.Parent?.Name is ScenesFolder or GlobalFolder;
         FsNode? archive = isArchiveNode ? node : node.Parent;
-        if (archive is null || archive.Parent?.Name != ScenesFolder || archive.ArchivePath is null)
+        if (archive?.ArchivePath is null || archive.Parent?.Name is not (ScenesFolder or GlobalFolder))
             return null;
 
         // An archive node itself (its background) is coloured by the archive's first block.
@@ -1390,20 +1617,38 @@ public sealed class VirtualFileSystem
     // ---------------------------------------------------------------------------------------------
 
     /// <summary>
-    /// The geometries the raw RGB565 rasters of Runaway 1's <c>RESOURCE.000</c> come in. Nothing in the
+    /// The geometries the raw RGB565 rasters of a game's <c>RESOURCE.000</c> come in. Nothing in the
     /// archive records a width, so an entry is recognised by its exact size -- see
-    /// <c>docs/formats/global-data.md</c>.
+    /// <c>docs/formats/global-data.md</c>. Runaway 3 keeps the same art as BMP, header and all, so it has
+    /// no row here.
     /// </summary>
-    private static readonly (int Width, int Height)[] GlobalRasterGeometries =
-    [
-        (Rgb565.ScreenWidth, Rgb565.ScreenHeight), // menu panel, inventory screen, item close-ups
-        (904, 480),                                // inventory item icon sheets
-        (700, 74),                                 // UI sprite strips
-    ];
-
-    private static bool TryGlobalRaster(long size, out int width, out int height)
+    private static (int Width, int Height)[] GlobalRasterGeometries(GameVersion game) => game switch
     {
-        foreach ((int w, int h) in GlobalRasterGeometries)
+        GameVersion.Runaway1 =>
+        [
+            (Rgb565.ScreenWidth, Rgb565.ScreenHeight), // menu panel, inventory screen, item close-ups
+            (904, 480),                                // inventory item icon sheets
+            (700, 74),                                 // UI sprite strips
+        ],
+        GameVersion.Runaway2 =>
+        [
+            (Rgb565.ScreenWidth, Rgb565.ScreenHeight), // menu and inventory screens, item close-ups
+            (700, 74),                                 // UI sprite strips
+        ],
+        _ => [],
+    };
+
+    private static bool TryGlobalRaster(GameVersion game, long size, out int width, out int height)
+    {
+        // Hollywood Monsters is one byte per pixel, and the only thing in its global archive at screen
+        // size is the menu panel: the save-slot list, the preview window and the four setting sliders.
+        if (game == GameVersion.HollywoodMonsters)
+        {
+            (width, height) = (Rgb565.ScreenWidth, HollywoodMonstersScreenHeight);
+            return size == (long)width * height;
+        }
+
+        foreach ((int w, int h) in GlobalRasterGeometries(game))
         {
             if (size == (long)w * h * 2)
             {
@@ -1416,16 +1661,27 @@ public sealed class VirtualFileSystem
         return false;
     }
 
+    /// <summary>How much of a global entry is read to decide whether the rest is worth reading.</summary>
+    private const int GlobalProbeHeadBytes = 64 * 1024;
+
+    /// <summary>Hollywood Monsters draws at 1024x480, not the 1024x600 the Runaway games use.</summary>
+    private const int HollywoodMonstersScreenHeight = 480;
+
     /// <summary>What a recognised <c>RESOURCE.000</c> raster is, for the tree label.</summary>
-    private static string GlobalRasterName(int index, int width) => index switch
+    private static string GlobalRasterName(GameVersion game, int index, int width) => (game, index) switch
     {
+        (GameVersion.HollywoodMonsters, _) => "menu panel",
         // Easy to get backwards: 131 looks like a title backdrop, but 132 is the one carrying the volume
-        // knob, the brightness lever and the setting holes the menu draws its entries over.
-        131 => "inventory screen",
-        132 => "menu panel",
+        // knob, the brightness lever and the setting holes the menu draws its entries over. Those slots are
+        // Runaway 1's, and Runaway 2 puts different art at the same indices, so it only gets the shape.
+        (GameVersion.Runaway1, 131) => "inventory screen",
+        (GameVersion.Runaway1, 132) => "menu panel",
         _ when width == 904 => "item icons",
         _ when width == 700 => "UI strip",
-        _ => "screen",
+        // Only a picture the size of the game's own screen is a screen; the rest are sheets and panels
+        // of their own size, recovered by the stride sweep, and nothing says what they are for.
+        _ when width == Rgb565.ScreenWidth || width == 1280 => "screen",
+        _ => "raster",
     };
 
     public static string FormatSize(long bytes)

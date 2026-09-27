@@ -301,3 +301,40 @@ public class YesterdayTests
         Assert.Null(vfs.SceneAttributeTableFor(d02));
     }
 }
+
+/// <summary>
+/// Yesterday's RESOURCE.IFZ, which is The Next BIG Thing's interface container: the same plain offset
+/// table of PNGs, except that it aliases dozens of slots onto one image, so a size read as the gap to the
+/// next slot rather than to the next distinct offset leaves most of the archive empty.
+/// </summary>
+public class YesterdayInterfaceTests
+{
+    [Fact]
+    public void RealInstall_AliasedSlotsStillResolveToTheirImage()
+    {
+        string path = Path.Combine(YesterdayTests.YesterdaySteamDir, "Resource", "RESOURCE.IFZ");
+        if (!File.Exists(path)) return;
+
+        using FileStream fs = File.OpenRead(path);
+        List<ArchiveEntry> entries = InterfaceArchive.ReadEntries(fs);
+        Assert.Equal(69, entries.Count);
+
+        int images = 0;
+        var aliased = new Dictionary<long, int>();
+        foreach (ArchiveEntry e in entries)
+        {
+            var head = new byte[64];
+            fs.Position = e.Offset;
+            int read = fs.Read(head, 0, (int)Math.Min(head.Length, e.Size));
+            if (!PngDecoder.TryGetDimensions(head.AsSpan(0, read), out _, out _))
+                continue;
+
+            images++;
+            aliased.TryGetValue(e.Offset, out int n);
+            aliased[e.Offset] = n + 1;
+        }
+
+        Assert.Equal(61, images);
+        Assert.True(aliased.Values.Max() > 40, "expected one image shared by dozens of slots");
+    }
+}

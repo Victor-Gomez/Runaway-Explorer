@@ -1,3 +1,4 @@
+using RunawayExplorer.Core.FileSystem;
 using RunawayExplorer.Core.Formats;
 using Xunit;
 using static RunawayExplorer.Core.Tests.SyntheticAssets;
@@ -35,6 +36,27 @@ public class FontDecoderTests
         // One byte either way and the records no longer end on the bitmap's last byte.
         Assert.False(FontDecoder.IsGlyphTable(table, bitmap.Length - 1));
         Assert.False(FontDecoder.IsGlyphTable(table, bitmap.Length + 1));
+    }
+
+    [Fact]
+    public void ReadsRunaway2sWiderRecordsToTheSameGlyphs()
+    {
+        // Runaway 2 and 3 widened the offset to 32 bits -- their bitmaps outgrew 64 KB -- and changed
+        // nothing else, so the same table describes the same glyphs either way.
+        const int later = FontDecoder.RecordSizeLater;
+        Assert.Equal(later, FontDecoder.RecordSizeFor(GameVersion.Runaway2));
+        Assert.Equal(later, FontDecoder.RecordSizeFor(GameVersion.Runaway3));
+        Assert.Equal(FontDecoder.RecordSize, FontDecoder.RecordSizeFor(GameVersion.Runaway1));
+
+        byte[] table = GlyphTable(Glyphs, later);
+        byte[] bitmap = FontBitmap(Glyphs);
+
+        Assert.True(FontDecoder.IsGlyphTable(table, bitmap.Length, later));
+        Assert.Equal(FontDecoder.ReadGlyphTable(GlyphTable(Glyphs)), FontDecoder.ReadGlyphTable(table, later));
+
+        // The two record sizes do not accept each other's tables.
+        Assert.False(FontDecoder.IsGlyphTable(table, bitmap.Length));
+        Assert.False(FontDecoder.IsGlyphTable(GlyphTable(Glyphs), bitmap.Length, later));
     }
 
     [Fact]

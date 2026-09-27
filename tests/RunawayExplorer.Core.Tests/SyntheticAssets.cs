@@ -230,23 +230,28 @@ public static class SyntheticAssets
         return (image.Pixels[i + 2], image.Pixels[i + 1], image.Pixels[i], image.Pixels[i + 3]);
     }
 
-    // --- Fonts: outlined glyph bitmaps and their 5-byte-record glyph tables. ---
+    // --- Fonts: outlined glyph bitmaps and their glyph tables. ---
 
     /// <summary>
-    /// A glyph table: <paramref name="glyphs"/> 5-byte records that tile a bitmap exactly.
-    /// Each record is { u16 Offset, u8 Top, u8 Height, u8 Width }.
+    /// A glyph table: <paramref name="glyphs"/> records that tile a bitmap exactly. A record is
+    /// { u16 Offset, u8 Top, u8 Height, u8 Width } in Runaway 1 and { u32 Offset, ... } in Runaway 2
+    /// and 3, which is what <paramref name="recordSize"/> picks between.
     /// </summary>
-    public static byte[] GlyphTable(IReadOnlyList<(byte Top, byte Height, byte Width)> glyphs)
+    public static byte[] GlyphTable(IReadOnlyList<(byte Top, byte Height, byte Width)> glyphs, int recordSize = 5)
     {
-        var data = new byte[glyphs.Count * 5];
-        ushort offset = 0;
+        var data = new byte[glyphs.Count * recordSize];
+        uint offset = 0;
         for (int i = 0; i < glyphs.Count; i++)
         {
-            BinaryPrimitives.WriteUInt16LittleEndian(data.AsSpan(i * 5), offset);
-            data[i * 5 + 2] = glyphs[i].Top;
-            data[i * 5 + 3] = glyphs[i].Height;
-            data[i * 5 + 4] = glyphs[i].Width;
-            offset += (ushort)(glyphs[i].Height * glyphs[i].Width);
+            Span<byte> r = data.AsSpan(i * recordSize, recordSize);
+            if (recordSize == 5)
+                BinaryPrimitives.WriteUInt16LittleEndian(r, (ushort)offset);
+            else
+                BinaryPrimitives.WriteUInt32LittleEndian(r, offset);
+            r[recordSize - 3] = glyphs[i].Top;
+            r[recordSize - 2] = glyphs[i].Height;
+            r[recordSize - 1] = glyphs[i].Width;
+            offset += (uint)(glyphs[i].Height * glyphs[i].Width);
         }
         return data;
     }
@@ -273,6 +278,46 @@ public static class SyntheticAssets
                     data[pos++] = border ? (byte)0x12 : edge ? (byte)0x00 : (byte)0x10;
                 }
         }
+        return data;
+    }
+
+    /// <summary>
+    /// A Windows BMP of <paramref name="width"/>×<paramref name="height"/>, uncompressed, bottom-up,
+    /// 24 or 32 bits per pixel. Pixel (x, y) is (B, G, R) = (x, y, 0x40), and with 32 bpp the alpha is
+    /// <paramref name="alpha"/> unless it is null, which writes the zero padding a BMP normally carries.
+    /// </summary>
+    public static byte[] Bmp(int width, int height, int bpp = 32, byte? alpha = 255)
+    {
+        int bytesPerPixel = bpp / 8;
+        int stride = (width * bytesPerPixel + 3) & ~3;
+        int pixels = stride * height;
+        var data = new byte[54 + pixels];
+
+        data[0] = (byte)'B';
+        data[1] = (byte)'M';
+        BinaryPrimitives.WriteUInt32LittleEndian(data.AsSpan(2), (uint)data.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(data.AsSpan(10), 54);
+        BinaryPrimitives.WriteUInt32LittleEndian(data.AsSpan(14), 40);
+        BinaryPrimitives.WriteInt32LittleEndian(data.AsSpan(18), width);
+        BinaryPrimitives.WriteInt32LittleEndian(data.AsSpan(22), height);
+        BinaryPrimitives.WriteUInt16LittleEndian(data.AsSpan(26), 1);
+        BinaryPrimitives.WriteUInt16LittleEndian(data.AsSpan(28), (ushort)bpp);
+
+        for (int y = 0; y < height; y++)
+        {
+            // Bottom-up: the first row stored is the bottom row of the image.
+            int row = 54 + (height - 1 - y) * stride;
+            for (int x = 0; x < width; x++)
+            {
+                int i = row + x * bytesPerPixel;
+                data[i] = (byte)x;
+                data[i + 1] = (byte)y;
+                data[i + 2] = 0x40;
+                if (bpp == 32)
+                    data[i + 3] = alpha ?? 0;
+            }
+        }
+
         return data;
     }
 

@@ -23,9 +23,29 @@ N × {
 }
 ```
 
-#### Scanline bounding rule
+#### Scanline bounding rule, and where it does not hold
 
-Runs are **scanline-bounded**: the sum of run lengths in any row equals the scene width (e.g. 1024 or 1280) with zero remainder. Runs do not wrap across scanlines.
+Runs are often **scanline-bounded**: the sum of run lengths in any row equals the scene width
+(e.g. 1024 or 1280) with zero remainder, and no run wraps across a scanline.
+
+*Runaway 1* mixes both encodings, freely, within the same game. Of its 56 scene masks, **34 are
+scanline-bounded and 21 are continuous** -- their runs wrap onto the next row and only the grand
+total is meaningful. (One more, `RESOURCE.F27` entry 1, is neither: its runs total 716,800 px
+against a 1024x600 background, and it has not been explained.) So the scanline rule cannot be
+used to *recognise* a *Runaway 1* mask; it misses more than a third of them.
+
+Two practical consequences:
+
+- **Decode continuously always.** Fill the id map in reading order and let runs wrap. A mask that
+  does respect scanlines decodes identically that way, because its runs land on the row
+  boundaries of their own accord. There is no need to detect which kind you have.
+- **Detect by the pixel total.** The test that holds for every mask in the game is that the run
+  lengths sum to exactly `width * height`, with no zero-length run. That is also enough to tell a
+  mask from the sprite or raster that sits in the same slot in the archives that carry no mask.
+
+The mask, where a scene has one, is entry 1 and the attribute table entry 2, in every *Runaway 1*
+archive that has them. 18 archives have neither -- their entry 1 is a sprite -- and those are the
+cutscene and close-up archives.
 
 #### Ambiguity with palette blocks (*Hollywood Monsters*)
 
@@ -92,18 +112,38 @@ In *Yesterday*, several scene archives (such as `RESOURCE.C02\e04`, `RESOURCE.D0
 
 ## Zone attribute table (`1536 bytes`)
 
-In *Runaway 1* and *2*, scene archives contain a recurring 1,536-byte data entry. This table consists of 256 records of 6 bytes each:
+In *Runaway 1* and *2*, scene archives contain a recurring 1,536-byte data entry: entry 2, beside
+the mask at entry 1. It is **six 256-byte pages**, one page per attribute, indexed
 
 ```text
-Table:
-    Record[256] × {
-        u8 WalkFlag             -- 1 if walkable
-        u8 HotspotFlag          -- 1 if interactive
-        u8 DepthPlane           -- z-order depth sort key
-        u8 MaterialId           -- surface acoustics (stone, wood, carpet, metal)
-        u16 ScriptAction        -- associated trigger index
-    }
+table[page * 256 + id]        -- page 0..5, id 0..255
 ```
+
+which is the same shape as the *Hollywood Monsters* seven-page table above, one page shorter.
+`RleMaskDecoder` reads it this way.
+
+> This section previously described the table as 256 records of 6 bytes (`{u8 WalkFlag, u8
+> HotspotFlag, u8 DepthPlane, u8 MaterialId, u16 ScriptAction}`), which is wrong, and disagreed
+> with the decoder beside it. Pooling all 114 tables in *Runaway 1* settles it: read as pages the
+> fields come out tightly bounded (maxima 19, 28, 9, 9, 255 and 7), read as records all six smear
+> across the full byte range, which is what slicing across a structure looks like.
+
+Two pages are established, by tinting a scene by each page in turn and looking at the result
+(`RESOURCE.F13`, Mama Dorita's, 31 zone ids). Figures are pooled over the 55 *Runaway 1* scenes
+that carry both a mask and a table:
+
+| Page | Meaning | Evidence |
+|---|---|---|
+| 0 | **Walkable region**, 0 = not walkable | Set on 45% of a scene's ids, ~4 regions per scene. Its value ranks with the zone's mean screen row 76% of the time, i.e. the floor is cut into bands front to back. Tinting lights the ground and nothing else. |
+| 1 | **Scene item / hotspot index**, 0 = nothing | Set on 54% of ids, ~10 items per scene, and groups of zone ids collapse onto one item number, which is how one object owns several zones. In F13 it lights exactly the door, the well, the skull on the stick and the exit strip; probing the picture returns item 1 for the exit, 2 for the door, 3 for the well, 5 for the skull. |
+| 2 | *unidentified* -- plausibly the walk-behind occluders | The sparse page: set on only 19% of a scene's ids, ~3 values. |
+| 3 | *unidentified* | Dense (91% of ids), values 1..6, no relation to screen row. |
+| 4 | *unidentified* | The only page using the whole byte range: 142 distinct values, 74% of ids set. In F13 the values repeat with a period of four in the zone id, so it is probably not a small class number like the others. |
+| 5 | *unidentified* -- plausibly the footstep material | Dense, values 0..7, and constant across every zone of a scene in the scenes checked (2 everywhere in F13). That is what the equivalent *Hollywood Monsters* page means, but one scene of dirt is not enough to call it. |
+
+Pages 2, 3, 4 and 5 are named by position rather than by guess on purpose. The earlier
+`DepthPlane` / `MaterialId` / `ScriptAction` labels came from the record-major reading and have
+never been checked against the data.
 
 The explorer reads this table to allow filtering masks by individual functional layers (`Walk`, `Hotspot`, `Depth`, `Material`, `Occluder`).
 

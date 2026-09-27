@@ -21,7 +21,7 @@ public sealed class ScanCache
     };
 
     /// <summary>Bump when the classifier or cache schema changes so old answers are discarded.</summary>
-    public const int FormatVersion = 12;
+    public const int FormatVersion = 13;
 
     public sealed class CachedEntry
     {
@@ -36,6 +36,13 @@ public sealed class ScanCache
         [JsonPropertyName("f")] public int Frames { get; set; }
         [JsonPropertyName("sh")] public double Sharpness { get; set; }
         [JsonPropertyName("m")] public bool IsMask { get; set; }
+
+        /// <summary>
+        /// The tree label, for the global archives. A scene entry's label is written from its kind and
+        /// geometry when the tree is built, in whichever language is active; a global entry's says things
+        /// no other field carries ("cursor atlas", "glyph table, 191 glyphs"), so it is remembered.
+        /// </summary>
+        [JsonPropertyName("l")] public string? Label { get; set; }
 
         public ImageInfo? ToImageInfo() => Kind is EntryKind.Data ? null : new ImageInfo
         {

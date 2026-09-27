@@ -55,6 +55,12 @@ public static class ResourceLoader
                             return new ImageResource(jpgImg, 0, 0, false, "background");
                         return new ErrorResource($"'{node.GetPath()}' failed to decode as JPEG.");
                     }
+                    if (BmpDecoder.IsBmp(data))
+                    {
+                        if (BmpDecoder.Decode(data) is { } bmpImg)
+                            return new ImageResource(bmpImg, 0, 0, false, "background");
+                        return new ErrorResource($"'{node.GetPath()}' failed to decode as BMP.");
+                    }
                     if (CursorAtlasDecoder.IsAtlas(data))
                     {
                         return new ImageResource(CursorAtlasDecoder.DecodeAtlas(data), 0, 0, false, "cursor atlas");
@@ -267,10 +273,11 @@ public static class ResourceLoader
                 case EntryKind.Font:
                 {
                     byte[] data = vfs.ReadBytes(node);
-                    // A glyph table entry (divisible by 5, small) → informational text.
-                    if (data.Length % FontDecoder.RecordSize == 0 && data.Length <= 10_000)
+                    int recordSize = FontDecoder.RecordSizeFor(vfs.GameVersion);
+                    // A glyph table entry (a whole number of records, small) → informational text.
+                    if (data.Length % recordSize == 0 && data.Length <= 10_000)
                     {
-                        var glyphs = FontDecoder.ReadGlyphTable(data);
+                        var glyphs = FontDecoder.ReadGlyphTable(data, recordSize);
                         int lineHeight = 0;
                         foreach (var g in glyphs)
                             lineHeight = Math.Max(lineHeight, g.Top + g.Height);
@@ -286,9 +293,9 @@ public static class ResourceLoader
                     // A glyph bitmap entry: find the neighbouring table to decode it.
                     // The table is the next slot; look for it in the tree.
                     byte[]? tableData = FindFontTableData(node, vfs);
-                    if (tableData is not null && FontDecoder.IsGlyphTable(tableData, data.Length))
+                    if (tableData is not null && FontDecoder.IsGlyphTable(tableData, data.Length, recordSize))
                     {
-                        var glyphs = FontDecoder.ReadGlyphTable(tableData);
+                        var glyphs = FontDecoder.ReadGlyphTable(tableData, recordSize);
                         return new ImageResource(FontDecoder.Decode(data, glyphs), 0, 0, false, $"font, {glyphs.Length} glyphs");
                     }
                     return new ErrorResource($"'{node.GetPath()}' is tagged as a font but its glyph table was not found.");

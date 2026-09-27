@@ -125,6 +125,22 @@ public static class BatchExporter
                 byte[] data = vfs.ReadBytes(file);
                 ImageInfo? info = file.Image;
                 DecodedImage image;
+
+                // The interface art of the later games is whole PNG, JPEG or BMP files, and Runaway 1
+                // and 2 keep their cursors in a keyed raster; only after those does the entry have to be
+                // a bare raster of the geometry the scan recorded.
+                DecodedImage? container =
+                    PngDecoder.IsPng(data) ? PngDecoder.Decode(data)
+                    : JpegDecoder.IsJpeg(data) ? JpegDecoder.Decode(data)
+                    : BmpDecoder.IsBmp(data) ? BmpDecoder.Decode(data)
+                    : CursorAtlasDecoder.IsAtlas(data) ? CursorAtlasDecoder.DecodeAtlas(data)
+                    : null;
+                if (container is not null)
+                {
+                    PngWriter.Write(container, path);
+                    return BatchExportResult.Exported;
+                }
+
                 if (indexed)
                 {
                     RasterInfo geometry = info is not null && (long)info.Width * info.Height == data.Length
@@ -238,10 +254,11 @@ public static class BatchExporter
             case EntryKind.Font:
             {
                 byte[] data = vfs.ReadBytes(file);
+                int recordSize = FontDecoder.RecordSizeFor(vfs.GameVersion);
                 // Glyph table entries are small; export as text.
-                if (data.Length % FontDecoder.RecordSize == 0 && data.Length <= 10_000)
+                if (data.Length % recordSize == 0 && data.Length <= 10_000)
                 {
-                    var glyphs = FontDecoder.ReadGlyphTable(data);
+                    var glyphs = FontDecoder.ReadGlyphTable(data, recordSize);
                     var sb = new System.Text.StringBuilder();
                     for (int i = 0; i < glyphs.Length; i++)
                     {
@@ -257,9 +274,9 @@ public static class BatchExporter
                 if (tableNode is null)
                     return BatchExportResult.Failed;
                 byte[] tableData = vfs.ReadBytes(tableNode);
-                if (!FontDecoder.IsGlyphTable(tableData, data.Length))
+                if (!FontDecoder.IsGlyphTable(tableData, data.Length, recordSize))
                     return BatchExportResult.Failed;
-                var glyphRecords = FontDecoder.ReadGlyphTable(tableData);
+                var glyphRecords = FontDecoder.ReadGlyphTable(tableData, recordSize);
                 PngWriter.Write(FontDecoder.Decode(data, glyphRecords), path);
                 return BatchExportResult.Exported;
             }

@@ -1,4 +1,5 @@
 using RunawayExplorer.Core.FileSystem;
+using RunawayExplorer.Core.Formats;
 using RunawayExplorer.Core.Settings;
 using Xunit;
 
@@ -102,5 +103,39 @@ public class TheNextBigThingTests
         Assert.NotNull(e00);
         Assert.Equal(EntryKind.Background, e00.Kind);
         Assert.Equal(1920, e00.Image?.Width);
+    }
+}
+
+/// <summary>
+/// The Next BIG Thing has no RESOURCE.000 at all: its interface -- menu screens, cursors and the rest --
+/// lives in RESOURCE.IFZ as whole PNG and JPEG files behind a plain offset table.
+/// </summary>
+public class TheNextBigThingInterfaceTests
+{
+    [Fact]
+    public void RealInstall_InterfaceArchiveHoldsPngArtwork()
+    {
+        string path = Path.Combine(TheNextBigThingTests.TnbtSteamDir, "Resource", "RESOURCE.IFZ");
+        if (!File.Exists(path)) return;
+
+        using FileStream fs = File.OpenRead(path);
+        List<ArchiveEntry> entries = InterfaceArchive.ReadEntries(fs);
+        Assert.Equal(95, entries.Count);
+
+        int images = 0;
+        foreach (ArchiveEntry e in entries)
+        {
+            var head = new byte[64];
+            fs.Position = e.Offset;
+            int read = fs.Read(head, 0, (int)Math.Min(head.Length, e.Size));
+            if (PngDecoder.TryGetDimensions(head.AsSpan(0, read), out int w, out int h))
+            {
+                images++;
+                Assert.InRange(w, 1, 4096);
+                Assert.InRange(h, 1, 16384);
+            }
+        }
+
+        Assert.Equal(24, images);
     }
 }

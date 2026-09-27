@@ -172,12 +172,34 @@ anything; the claim is about the region of slots that differs between localised 
 a distinct payload. With the glyph tables decoded, a reader can compose strings from the fonts
 directly and does not need those bitmaps.
 
-##### Other games
+##### Runaway 2 and Runaway 3: the same fonts with a wider offset (**verified**)
 
-Checked and **not** present: *Runaway 2* and *Runaway 3* have no slot whose contents chain as a
-glyph table of this shape, so their fonts use some other scheme.
+The later two games keep the format exactly, in the same paired slots, and change one field: the
+record is **7 bytes** because the offset is a `u32`.
 
-#### Cursor atlas (*Runaway 1*) (**verified**)
+```text
+Record[N] x {
+    u32 Offset      -- byte offset into the glyph bitmap
+    u8  Top
+    u8  Height
+    u8  Width
+}
+```
+
+That is the whole difference, and the reason for it is plain in the sizes: *Runaway 3*'s largest
+glyph bitmap is 107,900 bytes, well past what a `u16` offset can reach. The tiling check is
+unchanged and is what identifies the table, so the two record widths cannot be confused -- a table
+read at the wrong width fails to tile.
+
+| Game | Font slots (bitmap, table) | Glyphs |
+|---|---|---|
+| *Runaway 2* | 123/124, 125/126, 146/147, 161/162 | 247, 191, 191, 150 |
+| *Runaway 3* | 123/124, 125/126, 138/139, 159/160, 161/162 | 247, 191, 191, 191, 150 |
+
+An earlier note here said these games had no glyph table at all. They do; the search had been run
+with *Runaway 1*'s 5-byte record, which no *Runaway 2* or *Runaway 3* table satisfies.
+
+#### Cursor atlas (*Runaway 1* and *Runaway 2*) (**verified**)
 
 Slot 112 is a 904×540 RGB565 raster holding every mouse cursor, over the key colour `0x6841`
 (RGB 104, 8, 8), and it carries no index — the sprites have to be found by scanning.
@@ -191,6 +213,81 @@ threshold in that range yields the same **15** cursors, 23–46 px wide: crossha
 speech balloon, four diagonal exit arrows, then a run of morph frames.
 
 Hotspots are not in the atlas; they live in the executable.
+
+*Runaway 2* stores the same thing the same way, at the same indices: slots 112–117 are six atlases of
+exactly this size and key colour (*Runaway 1* has four, 112–115), and they scan into cursors on the same
+rule. It also repeats the 1024×600 screens and the 700×74 UI strips, though not *Runaway 1*'s 904×480
+icon sheets, and the art at any given slot is its own — only the shape is shared.
+
+#### Interface rasters (**verified**)
+
+The raw rasters of *Runaway 1* and *Runaway 2* carry no dimensions, so a slot becomes a picture in one of
+two ways.
+
+- **By size.** A whole number of screens (1,228,800 bytes = 1024×600×2) or one of the fixed interface
+  geometries above.
+- **By stride sweep.** Anything else goes through `RasterDecoder.Detect`, the same green-channel
+  autocorrelation the scene backgrounds use ([rasters.md](rasters.md)). It finds the art that is its own
+  odd size -- *Runaway 2*'s slots 155 and 156, for instance, are 264×104.
+
+A size match is necessary but not sufficient. *Runaway 2* stores one long data stream in slots 289-291,
+cut into pieces of exactly 1024×600×2 bytes -- the stream runs straight across the slot boundaries and on
+into e292, which is a different size only because it is the remainder. Read as pixels those pieces are
+noise, so a raster is confirmed by its pixels as well: artwork's three channels move together (the
+`ChannelDisagreement` score is 5-9 for the real screens) where those chunks score 115+. This is the one
+place in the reader where the pixels get a vote, and it is needed because a size can be a coincidence.
+
+An entry that passes is named for its width: a full-screen one (1024 or 1280 px) is a `screen`, the known
+interface geometries keep their names (`cursors`, `icons`, `ui-strip`), and anything the sweep recovered is
+a plain `raster`.
+
+#### Animations (**verified**)
+
+The global archive is not only interface art. Some of its slots are the scene archives' sprite format
+verbatim -- a `u16` frame count, a table of 14-byte frame records, then the frames -- self-contained in
+one slot rather than split over the header/data pair that *Runaway 2*'s scenes use. In a hex view the
+record table reads as stripes: the same five coordinates repeating every 14 bytes, with only the frame
+offset changing.
+
+| Game | Slots | Which |
+|---|---|---|
+| *Runaway 1* | 11 | 135-142, 155, 156, 159 -- menu widgets and pointing hands |
+| *Runaway 2* | 34 | 87-94, 105-107, 150, 152, 264-266, 270-287 |
+| *Runaway 3* | 47 | 15-34, 51-63, 67, 176-181, 256, 260, 313-318 |
+
+A sprite of one frame is an overlay rather than an animation, exactly as in a scene archive, which is why
+*Runaway 2* shows 33 animations and *Runaway 3* 46. All 92 of them walk byte-exact and paint frames. They are recognised by that walk, not by their size:
+a parse that tiles the entry exactly is proof, which is the same rule the scene classifier uses.
+
+#### Interface art of the later games (**verified**)
+
+The three games after *Runaway 2* keep no raw rasters for their interface at all.
+
+| Game | Where | Format |
+|---|---|---|
+| *Runaway 3* | `RESOURCE.000`, 20 slots | Whole Windows BMP files, 24/32-bit `BI_RGB`, bottom-up |
+| *The Next BIG Thing* | `RESOURCE.IFZ`, 24 of 95 slots | Whole PNG files, plus a few JPEGs |
+| *Yesterday* | `RESOURCE.IFZ`, 61 of 69 slots | Whole PNG files |
+| *Hollywood Monsters* | `RESOURCE.000` slot 42 | 1024×480 indexed pixels, one byte each |
+
+*Runaway 3*'s bitmaps run from 48×40 panel widgets up to the 1280×720 title and pause screen, and
+1280×1024 or 960×n sheets for the inventory. Several of the sheets are **two halves side by side**: the
+artwork on the left and its greyscale matte on the right, which is why the BMP's own alpha channel does
+not describe the shape. Nothing in the file marks which sheets are paired that way, so the decoder shows
+the stored image as it is rather than guessing.
+
+`RESOURCE.IFZ` is a plain offset table with no size half — the first slot's value is the table's own byte
+length, which also gives the slot count — and an entry runs to the next **distinct** offset. That last
+part matters: *Yesterday* points 48 consecutive slots at one PNG, so sizing an entry by the gap to the
+next slot rather than to the next distinct offset empties most of the archive.
+
+*Hollywood Monsters*' menu panel — the save-slot list, the preview window and the four setting sliders —
+is the one screen-sized entry in its global archive. Like everything else in that game it is indexed, and
+it takes its colours the usual way: the nearest palette block at or before it, completed from the shared
+block (see [palettes.md](palettes.md)).
+
+Not found, in any of the three: a keyed cursor atlas after *Runaway 2*. Those games' cursors are
+somewhere else, and nothing here says where. Their fonts are not missing -- see the glyph tables above.
 
 ### 2. `Resource.001` — character sprite library
 

@@ -13,6 +13,20 @@ public static class PngDecoder
     public static bool IsPng(ReadOnlySpan<byte> data) =>
         data.Length >= 8 && data[..8].SequenceEqual(PngSignature);
 
+    /// <summary>
+    /// Reads the size out of the IHDR chunk, which always begins at byte 16, without decoding the pixels.
+    /// </summary>
+    public static bool TryGetDimensions(ReadOnlySpan<byte> data, out int width, out int height)
+    {
+        width = height = 0;
+        if (!IsPng(data) || data.Length < 24)
+            return false;
+
+        width = System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(data[16..]);
+        height = System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(data[20..]);
+        return width > 0 && height > 0;
+    }
+
     public static DecodedImage? Decode(byte[] pngData)
     {
         ArgumentNullException.ThrowIfNull(pngData);

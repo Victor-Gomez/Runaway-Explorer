@@ -613,3 +613,88 @@ public class Runaway3Tests
 
     #endregion
 }
+
+/// <summary>
+/// Runaway 3 keeps its interface art as whole Windows BMP files in RESOURCE.000 -- the title and pause
+/// screens, the panel widgets and the inventory sheets -- rather than as the raw RGB565 rasters and keyed
+/// cursor atlas of Runaway 1 and 2.
+/// </summary>
+public class Runaway3InterfaceTests
+{
+    [Fact]
+    public void RealInstall_GlobalArchiveAlsoHoldsAnimations()
+    {
+        // Runaway 3 keeps its interface art as BMP, but its global archive carries sprite animations in
+        // the scene archives' format alongside them.
+        if (!Directory.Exists(Runaway3Tests.R3SteamDir)) return;
+
+        var vfs = VirtualFileSystem.Init(Runaway3Tests.R3SteamDir, cache: ScanCache.Ephemeral(includeShipped: true));
+        FsNode global = vfs.Root.Children.Single(c => c.Name == VirtualFileSystem.GlobalFolder)
+            .Children.Single(c => c.Name.Equals("RESOURCE.000", StringComparison.OrdinalIgnoreCase));
+
+        Assert.Equal(46, global.Children.Count(c => c.Kind == EntryKind.Animation));
+        Assert.Equal(20, global.Children.Count(c => c.FriendlyName?.Contains("  bitmap ", StringComparison.Ordinal) == true));
+
+        foreach (FsNode node in global.Children.Where(c => c.Kind == EntryKind.Animation))
+        {
+            SpriteAsset sprite = Assert.IsType<SpriteAsset>(SpriteAsset.Parse(vfs.ReadBytes(node)));
+            Assert.Null(sprite.Verify());
+        }
+    }
+
+    [Fact]
+    public void RealInstall_FontsUseTheSameWiderGlyphRecordsAsRunaway2()
+    {
+        if (!Directory.Exists(Runaway3Tests.R3SteamDir)) return;
+
+        var vfs = VirtualFileSystem.Init(Runaway3Tests.R3SteamDir, cache: ScanCache.Ephemeral(includeShipped: true));
+        FsNode global = vfs.Root.Children.Single(c => c.Name == VirtualFileSystem.GlobalFolder)
+            .Children.Single(c => c.Name.Equals("RESOURCE.000", StringComparison.OrdinalIgnoreCase));
+
+        List<FsNode> fonts = global.Children.Where(c => c.Kind == EntryKind.Font).ToList();
+        Assert.Equal([123, 124, 125, 126, 138, 139, 159, 160, 161, 162], fonts.Select(c => c.EntryIndex));
+
+        // 107,900 bytes is why the offset had to grow: it does not fit a 16-bit one.
+        byte[] bitmap = vfs.ReadBytes(global.Children.Single(c => c.EntryIndex == 123));
+        byte[] table = vfs.ReadBytes(global.Children.Single(c => c.EntryIndex == 124));
+        Assert.Equal(107_900, bitmap.Length);
+        Assert.True(FontDecoder.IsGlyphTable(table, bitmap.Length, FontDecoder.RecordSizeLater));
+    }
+
+    [Fact]
+    public void RealInstall_GlobalArchiveHoldsBitmaps()
+    {
+        string path = Path.Combine(Runaway3Tests.R3SteamDir, "Resource", "RESOURCE.000");
+        if (!File.Exists(path)) return;
+
+        using FileStream fs = File.OpenRead(path);
+        List<ArchiveEntry> entries = GlobalArchive.ReadEntries(fs, GameVersion.Runaway3);
+
+        var sizes = new List<(int Index, int Width, int Height)>();
+        foreach (ArchiveEntry e in entries)
+        {
+            if (e.Size < BmpDecoder.MinHeaderSize) continue;
+            var head = new byte[BmpDecoder.MinHeaderSize];
+            fs.Position = e.Offset;
+            fs.ReadExactly(head);
+            if (BmpDecoder.TryReadHeader(head, out int w, out int h, out long bytes) && bytes <= e.Size)
+                sizes.Add((e.Index, w, h));
+        }
+
+        Assert.Equal(20, sizes.Count);
+        // The title and pause screen is a full 1280x720; the smallest are the panel widgets.
+        Assert.Contains((103, 1280, 720), sizes);
+        Assert.Contains((136, 48, 40), sizes);
+
+        // Every one of them decodes, header and pixels agreeing.
+        foreach ((int index, int w, int h) in sizes)
+        {
+            ArchiveEntry e = entries.First(x => x.Index == index);
+            var data = new byte[e.Size];
+            fs.Position = e.Offset;
+            fs.ReadExactly(data);
+            DecodedImage image = BmpDecoder.Decode(data)!;
+            Assert.Equal((w, h), (image.Width, image.Height));
+        }
+    }
+}

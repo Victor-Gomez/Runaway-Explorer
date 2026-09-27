@@ -41,6 +41,23 @@ public class RasterDecoderTests
     }
 
     [Fact]
+    public void LooksLikeArtwork_SeparatesPicturesFromBytesThatMerelyFitTheGeometry()
+    {
+        // Runaway 2 cuts one long data stream into slots of exactly one screen's worth of bytes, so the
+        // size cannot decide on its own. Artwork moves its three channels together; other bytes do not.
+        byte[] picture = Raster(1024, 600);
+        Assert.True(RasterDecoder.LooksLikeArtwork(picture, 1024, 600));
+
+        var stream = new byte[1024 * 600 * 2];
+        var rng = new Random(7);
+        rng.NextBytes(stream);
+        Assert.False(RasterDecoder.LooksLikeArtwork(stream, 1024, 600));
+
+        // A span too short for the geometry is not artwork either.
+        Assert.False(RasterDecoder.LooksLikeArtwork(picture.AsSpan(0, picture.Length - 2), 1024, 600));
+    }
+
+    [Fact]
     public void DetectsDoubleScreenWidthRaster()
     {
         int width = 2048;

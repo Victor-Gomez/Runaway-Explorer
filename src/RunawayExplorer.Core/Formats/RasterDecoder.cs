@@ -305,11 +305,11 @@ public static class RasterDecoder
     /// Mean over horizontally adjacent pixel pairs of (max − min) of the three per-channel absolute
     /// differences. Artwork changes all channels together; an index layer does not.
     /// </summary>
-    internal static double ChannelDisagreement(ReadOnlySpan<byte> data, int width, int height)
+    internal static double ChannelDisagreement(ReadOnlySpan<byte> data, int width, int height, int rowStep = 1)
     {
         long sum = 0;
         long pairs = 0;
-        for (int y = 0; y < height; y++)
+        for (int y = 0; y < height; y += rowStep)
         {
             int row = y * width * 2;
             for (int x = 0; x + 1 < width; x++)
@@ -328,4 +328,55 @@ public static class RasterDecoder
 
     private static bool IsMaskLayer(ReadOnlySpan<byte> data, int width, int height) =>
         ChannelDisagreement(data, width, height) >= MaskDisagreementMin;
+
+    /// <summary>
+    /// Whether pixels of the given size change colour the way artwork does -- the same test
+    /// <see cref="Detect"/> uses to spot an index layer, offered to callers that already know the
+    /// geometry. A size match alone is not proof that an entry is a picture: Runaway 2 cuts one long
+    /// data stream into pieces of exactly 1024x600x2 bytes, and read as pixels those score 115+ here
+    /// where its real screens score 5-9.
+    /// </summary>
+    public static bool LooksLikeArtwork(ReadOnlySpan<byte> data, int width, int height)
+    {
+        if (data.Length < (long)width * height * 2)
+            return false;
+
+        // A sample decides this as well as the whole image does -- the two populations are an order of
+        // magnitude apart -- and the global archives are large enough that reading every row costs.
+        int rowStep = Math.Max(1, height / ArtworkSampleRows);
+        return ChannelDisagreement(data, width, height, rowStep) < MaskDisagreementMin;
+    }
+
+    /// <summary>Rows <see cref="LooksLikeArtwork"/> measures, spread over the image.</summary>
+    private const int ArtworkSampleRows = 120;
+
+    /// <summary>
+    /// The same test without knowing the geometry: neighbouring pixels are read as one long row, which
+    /// costs one wrong pair per line and decides nothing on its own. It is the cheap gate in front of
+    /// the stride sweep, which is the expensive part of classifying a global archive.
+    /// </summary>
+    public static bool LooksLikeArtwork(ReadOnlySpan<byte> data)
+    {
+        int pixels = data.Length / 2;
+        if (pixels < 2)
+            return false;
+
+        int step = Math.Max(1, pixels / ArtworkSampleLinearPairs);
+        long sum = 0, pairs = 0;
+        for (int i = 0; i + 1 < pixels; i += step)
+        {
+            ushort p = Rgb565.Read(data, i * 2);
+            ushort q = Rgb565.Read(data, (i + 1) * 2);
+            int dr = Math.Abs(((p >> 11) << 3) - ((q >> 11) << 3));
+            int dg = Math.Abs((((p >> 5) & 0x3F) << 2) - (((q >> 5) & 0x3F) << 2));
+            int db = Math.Abs(((p & 0x1F) << 3) - ((q & 0x1F) << 3));
+            sum += Math.Max(dr, Math.Max(dg, db)) - Math.Min(dr, Math.Min(dg, db));
+            pairs++;
+        }
+
+        return pairs > 0 && sum / (double)pairs < MaskDisagreementMin;
+    }
+
+    /// <summary>Pixel pairs the geometry-free <see cref="LooksLikeArtwork(ReadOnlySpan{byte})"/> measures.</summary>
+    private const int ArtworkSampleLinearPairs = 20_000;
 }

@@ -464,3 +464,34 @@ public class HollywoodMonstersTests
         Assert.Equal(6, vfs.Summary.Phrases);
     }
 }
+
+/// <summary>
+/// Hollywood Monsters' menu panel -- the save-slot list, the preview window and the four setting sliders
+/// -- is the one screen-sized entry in its RESOURCE.000, at 1024x480 indexed pixels rather than the
+/// Runaway games' RGB565.
+/// </summary>
+public class HollywoodMonstersInterfaceTests
+{
+    public const string HmDir = @"E:\Games\Juegos\Holywood Monsters\MONSTERS\Monsters";
+
+    [Fact]
+    public void RealInstall_TheMenuPanelIsTheOnlyScreenSizedGlobalEntry()
+    {
+        string path = Path.Combine(HmDir, "RESOURCE.000");
+        if (!File.Exists(path)) return;
+
+        using FileStream fs = File.OpenRead(path);
+        List<ArchiveEntry> entries = GlobalArchive.ReadEntries(fs, GameVersion.HollywoodMonsters);
+
+        const int width = 1024, height = 480;
+        List<ArchiveEntry> screens = entries.Where(e => e.Size == (long)width * height).ToList();
+        ArchiveEntry menu = Assert.Single(screens);
+        Assert.Equal(42, menu.Index);
+
+        var data = new byte[menu.Size];
+        fs.Position = menu.Offset;
+        fs.ReadExactly(data);
+        RasterInfo geometry = Assert.IsType<RasterInfo>(RasterDecoder.DetectIndexed(data));
+        Assert.Equal((width, height), (geometry.Width, geometry.Height));
+    }
+}

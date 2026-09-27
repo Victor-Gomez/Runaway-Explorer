@@ -1,9 +1,10 @@
 using System.Buffers.Binary;
+using RunawayExplorer.Core.FileSystem;
 
 namespace RunawayExplorer.Core.Formats;
 
 /// <summary>
-/// Runaway 1's outlined fonts, which live in <c>RESOURCE.000</c> as a pair of slots: a glyph bitmap
+/// The outlined fonts, which live in <c>RESOURCE.000</c> as a pair of slots: a glyph bitmap
 /// and, in the slot immediately after it, a glyph table. See <c>docs/formats/global-data.md</c>.
 /// <para>
 /// The bitmap is one byte per pixel, <c>Width</c> bytes per row, <c>Height</c> rows, with no run-length
@@ -15,8 +16,19 @@ namespace RunawayExplorer.Core.Formats;
 /// </summary>
 public static class FontDecoder
 {
-    /// <summary>Size of one glyph record: <c>{ u16 Offset, u8 Top, u8 Height, u8 Width }</c>.</summary>
+    /// <summary>Size of one <i>Runaway 1</i> glyph record: <c>{ u16 Offset, u8 Top, u8 Height, u8 Width }</c>.</summary>
     public const int RecordSize = 5;
+
+    /// <summary>
+    /// Size of one <i>Runaway 2</i> / <i>Runaway 3</i> glyph record: <c>{ u32 Offset, u8 Top, u8 Height,
+    /// u8 Width }</c>. Their bitmaps outgrew a 16-bit offset -- Runaway 3's largest is 107,900 bytes --
+    /// so only the offset's width changed; everything else about the format is Runaway 1's.
+    /// </summary>
+    public const int RecordSizeLater = 7;
+
+    /// <summary>Which of the two record sizes a game uses.</summary>
+    public static int RecordSizeFor(GameVersion game) =>
+        game is GameVersion.Runaway2 or GameVersion.Runaway3 ? RecordSizeLater : RecordSize;
 
     /// <summary>The last opaque shade. <c>0x00</c> is pure outline, <see cref="FillShade"/> pure fill.</summary>
     public const byte FillShade = 0x10;
@@ -26,14 +38,20 @@ public static class FontDecoder
     /// <param name="Top">Blank rows above the glyph on its line.</param>
     public readonly record struct Glyph(int Offset, int Top, int Height, int Width);
 
-    /// <summary>Reads a glyph table. The caller has already checked the length is a multiple of <see cref="RecordSize"/>.</summary>
-    public static Glyph[] ReadGlyphTable(ReadOnlySpan<byte> table)
+    /// <summary>Reads a glyph table. The caller has already checked the length is a multiple of <paramref name="recordSize"/>.</summary>
+    public static Glyph[] ReadGlyphTable(ReadOnlySpan<byte> table, int recordSize = RecordSize)
     {
-        var glyphs = new Glyph[table.Length / RecordSize];
+        if (recordSize is not (RecordSize or RecordSizeLater))
+            throw new ArgumentOutOfRangeException(nameof(recordSize));
+
+        var glyphs = new Glyph[table.Length / recordSize];
         for (int i = 0; i < glyphs.Length; i++)
         {
-            ReadOnlySpan<byte> r = table.Slice(i * RecordSize, RecordSize);
-            glyphs[i] = new Glyph(BinaryPrimitives.ReadUInt16LittleEndian(r), r[2], r[3], r[4]);
+            ReadOnlySpan<byte> r = table.Slice(i * recordSize, recordSize);
+            int offset = recordSize == RecordSize
+                ? BinaryPrimitives.ReadUInt16LittleEndian(r)
+                : (int)BinaryPrimitives.ReadUInt32LittleEndian(r);
+            glyphs[i] = new Glyph(offset, r[recordSize - 3], r[recordSize - 2], r[recordSize - 1]);
         }
         return glyphs;
     }
@@ -44,13 +62,16 @@ public static class FontDecoder
     /// the previous ended and the last ends on the bitmap's final byte -- which is the format check, and
     /// nothing else in the archive has been seen to satisfy it by accident.
     /// </summary>
-    public static bool IsGlyphTable(ReadOnlySpan<byte> table, long bitmapSize)
+    public static bool IsGlyphTable(ReadOnlySpan<byte> table, long bitmapSize, int recordSize = RecordSize)
     {
-        if (table.Length == 0 || table.Length % RecordSize != 0 || bitmapSize <= 0)
+        if (table.Length == 0 || recordSize is not (RecordSize or RecordSizeLater)
+            || table.Length % recordSize != 0 || bitmapSize <= 0)
+        {
             return false;
+        }
 
         long expected = 0;
-        foreach (Glyph g in ReadGlyphTable(table))
+        foreach (Glyph g in ReadGlyphTable(table, recordSize))
         {
             if (g.Width == 0 || g.Height == 0 || g.Offset != expected)
                 return false;

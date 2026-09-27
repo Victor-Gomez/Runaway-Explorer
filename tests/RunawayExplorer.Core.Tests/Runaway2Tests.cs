@@ -578,6 +578,13 @@ public class Runaway2ContainerTests
         Assert.True(vfs.Summary.AudioClips > 0);
         Assert.True(vfs.Summary.VoiceClips > 0);
         Assert.True(vfs.Summary.Videos > 0);
+
+        // Its global archive is not only interface art: 11 of its slots are sprite animations in the
+        // scene archives' format -- the pointing hands and the menu widgets.
+        FsNode global = vfs.Root.Children.Single(c => c.Name == VirtualFileSystem.GlobalFolder)
+            .Children.Single(c => c.Name.Equals("Resource.000", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(11, global.Children.Count(c => c.Kind == EntryKind.Animation));
+        Assert.Equal(6, global.Children.Count(c => c.Kind == EntryKind.Font));
     }
 
     [Fact]
@@ -689,4 +696,167 @@ public class Runaway2ContainerTests
     }
 
     #endregion
+}
+
+/// <summary>
+/// Runaway 2's interface art, which sits in the same RESOURCE.000 slots and the same formats as Runaway
+/// 1's: cursors in a 904x540 raster over the key colour, screens at 1024x600, UI strips at 700x74. Its
+/// fonts are not in this shape -- no slot pair chains as a glyph table -- so they use some other scheme.
+/// </summary>
+public class Runaway2InterfaceTests
+{
+    private const string R2SteamDir = @"F:\Games\Steam\steamapps\common\Runaway The Dream of the Turtle";
+
+    [Fact]
+    public void RealInstall_FontsArePairedSlotsWithWiderGlyphRecords()
+    {
+        // Runaway 2's fonts are Runaway 1's with a 32-bit offset in each glyph record: bitmap in one
+        // slot, table in the next, the records tiling the bitmap to its last byte.
+        if (!Directory.Exists(R2SteamDir)) return;
+
+        var vfs = VirtualFileSystem.Init(R2SteamDir, cache: ScanCache.Ephemeral(includeShipped: true));
+        FsNode global = vfs.Root.Children.Single(c => c.Name == VirtualFileSystem.GlobalFolder)
+            .Children.Single(c => c.Name.Equals("RESOURCE.000", StringComparison.OrdinalIgnoreCase));
+
+        List<FsNode> fonts = global.Children.Where(c => c.Kind == EntryKind.Font).ToList();
+        Assert.Equal([123, 124, 125, 126, 146, 147, 161, 162], fonts.Select(c => c.EntryIndex));
+
+        const int recordSize = FontDecoder.RecordSizeLater;
+        foreach ((int bitmapSlot, int glyphs) in new[] { (123, 247), (125, 191), (146, 191), (161, 150) })
+        {
+            byte[] bitmap = vfs.ReadBytes(global.Children.Single(c => c.EntryIndex == bitmapSlot));
+            byte[] table = vfs.ReadBytes(global.Children.Single(c => c.EntryIndex == bitmapSlot + 1));
+
+            Assert.True(FontDecoder.IsGlyphTable(table, bitmap.Length, recordSize));
+            Assert.Equal(glyphs, table.Length / recordSize);
+
+            DecodedImage sheet = FontDecoder.Decode(bitmap, FontDecoder.ReadGlyphTable(table, recordSize));
+            Assert.True(sheet.Width > 0 && sheet.Height > 0);
+        }
+    }
+
+    [Fact]
+    public void RealInstall_RastersOfTheirOwnSizeAreFoundByTheStrideSweep()
+    {
+        // Not everything in the global archive is one of the screen geometries: e155 and e156 are a
+        // 264x104 pair, and their width is recovered the way a scene entry's is.
+        if (!Directory.Exists(R2SteamDir)) return;
+
+        var vfs = VirtualFileSystem.Init(R2SteamDir, cache: ScanCache.Ephemeral(includeShipped: true));
+        FsNode global = vfs.Root.Children.Single(c => c.Name == VirtualFileSystem.GlobalFolder)
+            .Children.Single(c => c.Name.Equals("RESOURCE.000", StringComparison.OrdinalIgnoreCase));
+
+        foreach (int slot in new[] { 155, 156 })
+        {
+            FsNode node = global.Children.Single(c => c.EntryIndex == slot);
+            Assert.Equal(EntryKind.Background, node.Kind);
+            Assert.Equal((264, 104), (node.Image!.Width, node.Image.Height));
+        }
+    }
+
+    [Fact]
+    public void RealInstall_GlobalArchiveHoldsSixCursorAtlasesAndNoRunaway1Fonts()
+    {
+        string path = Path.Combine(R2SteamDir, "Resource", "RESOURCE.000");
+        if (!File.Exists(path)) return;
+
+        using FileStream fs = File.OpenRead(path);
+        List<ArchiveEntry> entries = GlobalArchive.ReadEntries(fs, GameVersion.Runaway2);
+        var byIndex = entries.ToDictionary(e => e.Index);
+
+        var atlases = new List<int>();
+        int glyphTables = 0;
+        foreach (ArchiveEntry e in entries)
+        {
+            var data = new byte[Math.Min(e.Size, 20_000)];
+            fs.Position = e.Offset;
+            fs.ReadExactly(data);
+
+            if (e.Size == CursorAtlasDecoder.AtlasWidth * CursorAtlasDecoder.AtlasHeight * 2
+                && CursorAtlasDecoder.LooksLikeAtlas(data))
+            {
+                atlases.Add(e.Index);
+            }
+
+            if (e.Size % FontDecoder.RecordSize == 0 && byIndex.TryGetValue(e.Index - 1, out ArchiveEntry prev)
+                && FontDecoder.IsGlyphTable(data, prev.Size))
+            {
+                glyphTables++;
+            }
+        }
+
+        Assert.Equal([112, 113, 114, 115, 116, 117], atlases);
+        Assert.Equal(0, glyphTables);
+    }
+
+    [Fact]
+    public void RealInstall_GlobalAnimationsAreFoundAndWalkByteExact()
+    {
+        // Slots 87-94, 105-107 and 150/152 are the scene archives' sprite format sitting in the global
+        // archive: a 14-byte frame record table followed by the frames, self-contained rather than split
+        // over a pair of slots. Their repeating record tables are what a hex view shows as stripes.
+        if (!Directory.Exists(R2SteamDir)) return;
+
+        var vfs = VirtualFileSystem.Init(R2SteamDir, cache: ScanCache.Ephemeral(includeShipped: true));
+        FsNode global = vfs.Root.Children.Single(c => c.Name == VirtualFileSystem.GlobalFolder)
+            .Children.Single(c => c.Name.Equals("RESOURCE.000", StringComparison.OrdinalIgnoreCase));
+
+        List<FsNode> animations = global.Children.Where(c => c.Kind == EntryKind.Animation).ToList();
+        Assert.Equal(33, animations.Count);
+
+        FsNode e087 = global.Children.Single(c => c.Name == "e087");
+        Assert.Equal(EntryKind.Animation, e087.Kind);
+        Assert.Equal(71, e087.Image!.Frames);
+        Assert.Equal((354, 213), (e087.Image.Width, e087.Image.Height));
+
+        // Every frame of every one of them walks byte-exact and paints something.
+        foreach (FsNode node in animations)
+        {
+            SpriteAsset sprite = Assert.IsType<SpriteAsset>(SpriteAsset.Parse(vfs.ReadBytes(node)));
+            Assert.Null(sprite.Verify());
+            Assert.Contains(Enumerable.Range(0, sprite.FrameCount), i => !sprite.DecodeFrame(i).IsEmpty);
+        }
+    }
+
+    [Fact]
+    public void RealInstall_TheDataStreamCutIntoScreenSizedSlotsIsNotShownAsPictures()
+    {
+        // Slots 289-291 hold one long data stream cut into pieces of exactly 1024x600x2 bytes -- the
+        // stream runs straight across the slot boundaries and into e292, which is a different size and
+        // so was never in danger. Read as pixels they are noise, and a size match alone would show them
+        // in the tree as screens.
+        if (!Directory.Exists(R2SteamDir)) return;
+
+        var vfs = VirtualFileSystem.Init(R2SteamDir, cache: ScanCache.Ephemeral(includeShipped: true));
+        FsNode global = vfs.Root.Children.Single(c => c.Name == VirtualFileSystem.GlobalFolder)
+            .Children.Single(c => c.Name.Equals("RESOURCE.000", StringComparison.OrdinalIgnoreCase));
+
+        FsNode Entry(int index) => global.Children.Single(c => c.Name == $"e{index:000}");
+
+        Assert.All([289, 290, 291], i => Assert.Equal(EntryKind.GlobalData, Entry(i).Kind));
+
+        // The real screens at that same size still classify, and are still labelled by their geometry.
+        Assert.All([80, 140, 269], i => Assert.Equal(EntryKind.Background, Entry(i).Kind));
+        Assert.Equal((1024, 600), (Entry(140).Image!.Width, Entry(140).Image!.Height));
+    }
+
+    [Fact]
+    public void RealInstall_TheFirstAtlasHoldsTheCursors()
+    {
+        string path = Path.Combine(R2SteamDir, "Resource", "RESOURCE.000");
+        if (!File.Exists(path)) return;
+
+        using FileStream fs = File.OpenRead(path);
+        ArchiveEntry atlas = GlobalArchive.ReadEntries(fs, GameVersion.Runaway2).First(e => e.Index == 112);
+        var data = new byte[atlas.Size];
+        fs.Position = atlas.Offset;
+        fs.ReadExactly(data);
+
+        IReadOnlyList<CursorAtlasDecoder.SpriteBounds> cursors = CursorAtlasDecoder.FindCursors(data);
+        Assert.InRange(cursors.Count, 8, 24);
+        Assert.All(cursors, c => Assert.InRange(c.Width, 8, 64));
+
+        DecodedImage image = CursorAtlasDecoder.DecodeAtlas(data);
+        Assert.Equal((0, 0, 0, 0), SyntheticAssets.Pixel(image, 0, 0));
+    }
 }

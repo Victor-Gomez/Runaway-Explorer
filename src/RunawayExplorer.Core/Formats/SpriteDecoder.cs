@@ -189,6 +189,30 @@ public sealed class SpriteAsset
     public static SpriteAsset? Parse(byte[] data) => Parse(data, bytesPerPixel: 2);
 
     /// <summary>
+    /// Whether the first bytes of an entry could open a sprite asset, so that a caller sifting a large
+    /// archive can skip reading the rest. Every variant starts one of three ways: a frame count whose
+    /// record table is followed immediately by frame 0 (Runaway 3), the same with a zero first frame
+    /// offset (Runaway 2), or a record table beginning with a zero offset (Runaway 1, Hollywood
+    /// Monsters). Passing this is not proof -- <see cref="Parse(byte[])"/> still has to walk the frame.
+    /// </summary>
+    public static bool CouldBeSprite(ReadOnlySpan<byte> head, long totalSize)
+    {
+        if (head.Length < 6 || totalSize < RecordSize)
+            return false;
+
+        if (BinaryPrimitives.ReadUInt32LittleEndian(head) == 0)
+            return true;
+
+        int frames = BinaryPrimitives.ReadUInt16LittleEndian(head);
+        if (frames is 0 or > 2000 || totalSize < 16)
+            return false;
+
+        long headerSize = 2 + (long)frames * RecordSize;
+        uint firstFrame = BinaryPrimitives.ReadUInt32LittleEndian(head[2..]);
+        return totalSize >= headerSize && (firstFrame == 0 || firstFrame == headerSize);
+    }
+
+    /// <summary>
     /// Parses <paramref name="data"/> as a sprite asset. <see langword="null"/> when it is not one.
     /// Cheap: only the record table and frame 0 are walked.
     /// <para>

@@ -86,8 +86,10 @@ Windows build bundles it via NuGet; on Linux, install it from your distro's pack
   *Hollywood Monsters*' equivalents are understood: its playable scenes open with a fixed background,
   palette, region map, lookup pages and metadata block.
 - The localised text bitmaps in `RESOURCE.000` and *Runaway 1*'s `RESOURCE.001` (the character sprite
-  library): shown as hex dumps. The rest of *Runaway 1*'s `RESOURCE.000` does decode -- its three fonts,
-  the cursor atlas and the full-screen and UI rasters -- as does the tail of *Hollywood Monsters*'
+  library): shown as hex dumps. Interface art itself decodes in every game -- the fonts, cursor atlases,
+  full-screen and UI rasters and interface animations of *Runaway 1* and *Runaway 2*,
+  *Runaway 3*'s fonts, animations and bitmaps, the PNG and JPEG artwork in *The Next BIG Thing*'s and *Yesterday*'s
+  `RESOURCE.IFZ`, and *Hollywood Monsters*' menu panel -- as does the tail of *Hollywood Monsters*'
   `RESOURCE.000`, whose last 14 entries are resident sound effects and play normally.
 - Which character palette each *Hollywood Monsters* scene uses. The choice is compiled into `Monsters.exe`
   and is not recoverable from the archives, so some scenes tint their cast wrong above colour 207.

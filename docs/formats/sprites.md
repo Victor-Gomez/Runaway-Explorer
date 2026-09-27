@@ -2,6 +2,11 @@
 
 Animated characters, ambient animations (torches, water ripples, flags), and interactive objects are stored as segment-encoded multi-frame sprite assets.
 
+They are not only a scene format: *Runaway 1*, *2* and *3* keep interface animations -- pointing hands,
+menu widgets, and in the later two whole characters -- in the same shape inside `RESOURCE.000`, one asset
+per slot rather than split over the header/data pair *Runaway 2*'s scenes use. See
+[global-data.md](global-data.md).
+
 ## Purpose
 
 The format achieves high compression and efficient DirectDraw/hardware rendering by storing only the lit pixels in each frame as a series of horizontal segments, coupled with per-frame bounding boxes.
@@ -49,6 +54,41 @@ The animation's overall bounding box is the union of all individual frame boundi
 ```text
 UnionBounds = union(FrameRecord[0].Box, ..., FrameRecord[N-1].Box)
 ```
+
+### Blank frames
+
+A record with `SegmentCount == 0` is a **legal blank frame**: a beat in the animation that draws
+nothing. It still carries a bounding box (`W == 0` never occurs in *Runaway 1*), and it shares its
+`FrameOffset` with the frame that follows it, because it contributes no payload.
+
+Two consequences, and they are the easiest way to misread the format:
+
+- A zero segment count is **not** a table terminator.
+- Frame offsets are **non-decreasing**, not strictly increasing.
+
+Treating either as impossible truncates the record table silently -- the frames that survive still
+tile their region byte-exactly, so the asset looks valid and merely comes out short. Measured over
+*Runaway 1*'s 74 scene archives: blank frames appear in **58 of the 438** sprite assets, 1,430 of
+them in total, and the strict reading loses records in every one of those 58. The worst cases are
+`RESOURCE.E07` entry 6 (945 records read as 2), `RESOURCE.I03` entries 7-11 (501 read as 1) and
+`RESOURCE.E07` entry 7 (952 read as 434).
+
+`SpriteDecoder.cs` gets both right; this section is here because nothing said so.
+
+## Finding the record count
+
+The record table has **no count field** and nothing before it says how long it is. The table is
+recovered by reading records while they still look like records -- offset non-decreasing and below
+the asset size, `X0 + W` and `Y1` inside a sane coordinate range, `Y0 <= Y1` -- and then checking
+that the frames **tile the asset exactly**: frame *k* runs from `DataOffset + FrameOffset[k]` to
+`DataOffset + FrameOffset[k+1]`, the last one to the end of the asset, and walking each frame's
+segments must land on that boundary to the byte.
+
+That byte-exact tiling is also what tells a sprite from any other entry in an archive, which is how
+a decoder can probe a container whose slot contents are otherwise unlabelled. Over *Runaway 1* the
+scan's first guess is right for all **438** assets -- 13 of them behind descriptor records -- with
+no entry needing the count walked back and no false positive among the backgrounds, overlays, masks
+or data tables.
 
 ## Evolution of segment formats
 

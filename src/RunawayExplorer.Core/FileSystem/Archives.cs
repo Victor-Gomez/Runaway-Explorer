@@ -610,3 +610,68 @@ public static class VoiceArchive
     }
 }
 
+
+/// <summary>
+/// <c>RESOURCE.IFZ</c> -- the interface archive of <em>The Next BIG Thing</em> and <em>Yesterday</em>,
+/// which is where those two keep what the earlier games keep in <c>RESOURCE.000</c>: the menu screens,
+/// the cursors and the rest of the interface art, as whole PNG and JPEG files.
+/// <para>
+/// The container is a plain offset table with no size half -- the first slot's value is the table's own
+/// byte length, so it also gives the slot count -- and an entry runs to the next <em>distinct</em> offset.
+/// Repeated offsets are aliases: <em>Yesterday</em> points 48 consecutive slots at one PNG, and reading
+/// their sizes as the gap to the next slot would make every one of them empty.
+/// </para>
+/// </summary>
+public static class InterfaceArchive
+{
+    public static List<ArchiveEntry> ReadEntries(ReadOnlySpan<byte> data, long fileLength)
+    {
+        var entries = new List<ArchiveEntry>();
+        if (data.Length < 8)
+            return entries;
+
+        uint tableLen = BinaryPrimitives.ReadUInt32LittleEndian(data);
+        if (tableLen < 8 || tableLen % 4 != 0 || tableLen > data.Length || tableLen >= fileLength)
+            return entries;
+
+        int slots = (int)(tableLen / 4);
+        var offsets = new uint[slots];
+        for (int i = 0; i < slots; i++)
+            offsets[i] = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(i * 4));
+
+        uint[] sorted = offsets.Where(o => o >= tableLen && o < fileLength).Distinct().Order().ToArray();
+        if (sorted.Length == 0)
+            return entries;
+
+        for (int i = 0; i < slots; i++)
+        {
+            uint o = offsets[i];
+            int idx = Array.BinarySearch(sorted, o);
+            if (idx < 0)
+                continue;
+
+            long end = idx + 1 < sorted.Length ? sorted[idx + 1] : fileLength;
+            long size = end - o;
+            if (size > 0)
+                entries.Add(new ArchiveEntry(i, o, size));
+        }
+
+        return entries;
+    }
+
+    public static List<ArchiveEntry> ReadEntries(Stream archive)
+    {
+        ArgumentNullException.ThrowIfNull(archive);
+        archive.Position = 0;
+        var head = new byte[4];
+        archive.ReadExactly(head);
+        uint tableLen = BinaryPrimitives.ReadUInt32LittleEndian(head);
+        if (tableLen < 8 || tableLen % 4 != 0 || tableLen >= archive.Length)
+            return [];
+
+        var table = new byte[tableLen];
+        archive.Position = 0;
+        archive.ReadExactly(table);
+        return ReadEntries(table, archive.Length);
+    }
+}

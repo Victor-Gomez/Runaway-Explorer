@@ -22,7 +22,7 @@ Everything below is little-endian unless stated otherwise. Integers (`u8`, `u16`
 | Multi-frame segment streams | Animated sprites — frame bounding boxes, segment streams (HM 8-bit, R1 5-byte, R2 6-byte alpha, R3 7-byte, TNBT/Yesterday flags 6 & 7) | All | [sprites.md](sprites.md) |
 | 3-byte / 4-byte RLE, Sparse, PNG | Scene masks — walkboxes, depth planes, occluders, and clickable hotspots | All | [masks.md](masks.md) |
 | Raw PCM, MP3, Bink Video (`.bik`) | Audio & Video — synthesized WAV streams, MP3 audio, and XOR-restored Bink cutscenes | All | [audio-video.md](audio-video.md) |
-| `RESOURCE.000` .. `RESOURCE.004` | Global data — fonts (outlined glyph bitmaps plus their glyph tables), the cursor atlas, UI sprites, character sprite library, phrase tables, and lip-sync visemes | HM, R1–R3 | [global-data.md](global-data.md) |
+| `RESOURCE.000` .. `RESOURCE.005`, `RESOURCE.IFZ` | Global data — fonts (outlined glyph bitmaps plus their glyph tables), the cursor atlas, interface art (raw rasters, BMP, PNG/JPEG by game), interface animations, character sprite library, phrase tables, and lip-sync visemes | All | [global-data.md](global-data.md) |
 | Blocks of 6-bit RGB triples | Palettes — the per-entry colour table and the shared character colours | HM | [palettes.md](palettes.md) |
 
 ## Game-by-game summary
@@ -46,9 +46,12 @@ The numbering is reused across the games for unrelated things, so it is worth re
 
 | | `RESOURCE.000` | `001` | `002` | `003` | `004` |
 | --- | --- | --- | --- | --- | --- |
-| **Hollywood Monsters** | UI and font art, plus the shared 80-colour palette block; 1-byte header, 100 slots | Ambient audio | Cinematic audio | Script text: obfuscated rows + speech cues ([global-data.md](global-data.md)) | Voice bank |
-| **Runaway 1** | Font atlases and UI art; 20-byte header, 500 slots | Character sprite library | Cinematic audio | Dialogue phrase tables, scene-indexed like Hollywood Monsters' script; not decoded | Lip-sync visemes |
-| **Runaway 2** | Font atlases and UI art; 24-byte header, 312 slots | A scene archive, not a global one | Cinematic audio | Dialogue phrase tables | Lip-sync visemes |
+| **Hollywood Monsters** | The menu panel, UI and font art, the shared 80-colour palette block, and 14 resident sound effects in the tail; 1-byte header, 100 slots | Ambient audio | Cinematic audio | Script text: obfuscated rows + speech cues ([global-data.md](global-data.md)) | Voice bank |
+| **Runaway 1** | Font atlases, the cursor atlases, UI art and 11 interface animations; 20-byte header, 500 slots | Character sprite library | Cinematic audio | Dialogue phrase tables, scene-indexed like Hollywood Monsters' script; not decoded | Lip-sync visemes |
+| **Runaway 2** | The same, with wider glyph records: four fonts, cursor atlases, UI art and 34 animations; 24-byte header, 312 slots | A scene archive, not a global one | Cinematic audio | Dialogue phrase tables | Lip-sync visemes |
+| **Runaway 3** | Interface art as whole BMP files, five fonts and 47 animations; 24-byte header | — (no `001`; `002` is a scene archive) | See left | Dialogue phrase tables | Lip-sync visemes |
+| **The Next BIG Thing** | — (no `000`; the interface is PNG and JPEG in `RESOURCE.IFZ`, beside an undecoded `RESOURCE.TAB`) | — | — | Dialogue phrase tables | Lip-sync visemes |
+| **Yesterday** | — (`RESOURCE.IFZ` again, beside undecoded `TAB`, `DIS`, `CRD`, `FNT` and `PSE`) | — | — | Dialogue phrase tables | — |
 
 Sample rates and channel counts are never stored in any of these games; the values above are the decoders'
 documented choices, with the reasoning in [audio-video.md](audio-video.md).
@@ -82,7 +85,7 @@ Across 15 years of engine evolution (from *Hollywood Monsters* in 1997 to *Yeste
 - **Absolute screen coordinates**: Sprite segments and overlay rows specify absolute screen coordinates `(X, Y)` rather than canvas-relative coordinates.
 - **Independent frame composition**: Sprite animation frames are completely self-contained. No inter-frame delta accumulation or persistent state is used.
 - **Scanline-bounded RLE**: Continuous RLE runs in scene masks sum exactly to the scene width on each row without wrapping across scanlines.
-- **Structural identification**: An entry's kind is decided by walking its bytes exactly — a record stream that consumes the entry to the last byte, a size that is a whole number of screens — never by scoring the pixels. Where two formats can both satisfy such a walk, as 1- and 2-byte pixels can, the reader is told which game it is reading instead of guessing.
+- **Structural identification**: An entry's kind is decided by walking its bytes exactly — a record stream that consumes the entry to the last byte, a size that is a whole number of screens. Where two formats can both satisfy such a walk, as 1- and 2-byte pixels can, the reader is told which game it is reading instead of guessing. The one place pixels get a vote is a headerless raster recognised by its size alone, because a size can be a coincidence: *Runaway 2* cuts one data stream into pieces of exactly one screen's worth of bytes, and only the pixels say they are not a picture ([global-data.md](global-data.md)).
 
 ## A note on method
 

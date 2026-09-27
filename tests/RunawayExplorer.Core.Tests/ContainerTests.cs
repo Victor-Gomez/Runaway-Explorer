@@ -73,6 +73,39 @@ public static class SyntheticArchives
     }
 
     /// <summary>
+    /// A RESOURCE.IFZ interface archive: a plain offset table whose first slot holds the table's own
+    /// length, with an entry running to the next distinct offset. A null entry repeats the previous
+    /// offset, which is how the real archives alias several slots onto one image.
+    /// </summary>
+    public static byte[] Interface(IReadOnlyList<byte[]?> entries)
+    {
+        int slots = entries.Count;
+        uint tableLen = (uint)(slots * 4);
+        var offsets = new uint[slots];
+        using var payload = new MemoryStream();
+        uint cursor = tableLen;
+        for (int i = 0; i < slots; i++)
+        {
+            if (entries[i] is null)
+            {
+                offsets[i] = i > 0 ? offsets[i - 1] : cursor;
+                continue;
+            }
+
+            offsets[i] = cursor;
+            payload.Write(entries[i]!);
+            cursor += (uint)entries[i]!.Length;
+        }
+
+        using var ms = new MemoryStream();
+        Span<byte> u32 = stackalloc byte[4];
+        foreach (uint o in offsets) { BinaryPrimitives.WriteUInt32LittleEndian(u32, o); ms.Write(u32); }
+        payload.Position = 0;
+        payload.CopyTo(ms);
+        return ms.ToArray();
+    }
+
+    /// <summary>
     /// A Hollywood Monsters audio archive: a plain offset table whose slot 1 holds the table's own length,
     /// terminated by the file length, with stale bytes left in the slots past it -- exactly what defeats
     /// the Runaway 1 reader's "smallest value in the table" rule.
@@ -369,6 +402,32 @@ public class GlobalAndVisemeArchiveTests
         Assert.Equal(2, entries.Count);
         Assert.Equal(new ArchiveEntry(0, 0xFB4, 10), entries[0]);
         Assert.Equal(new ArchiveEntry(2, 0xFB4 + 10, 3), entries[1]);
+    }
+
+    [Fact]
+    public void InterfaceArchive_SizesRunToTheNextDistinctOffset()
+    {
+        byte[] a = SyntheticArchives.Interface([new byte[10], new byte[3], new byte[7]]);
+        List<ArchiveEntry> entries = InterfaceArchive.ReadEntries(a, a.Length);
+
+        Assert.Equal(3, entries.Count);
+        Assert.Equal(new ArchiveEntry(0, 12, 10), entries[0]);
+        Assert.Equal(new ArchiveEntry(1, 22, 3), entries[1]);
+        Assert.Equal(new ArchiveEntry(2, 25, 7), entries[2]);
+    }
+
+    [Fact]
+    public void InterfaceArchive_AliasedSlotsAllGetTheImage()
+    {
+        // Yesterday points 48 consecutive slots at one PNG. Sizing by the gap to the next slot rather
+        // than to the next distinct offset would leave every alias but the last one empty.
+        byte[] a = SyntheticArchives.Interface([new byte[10], null, null, new byte[4]]);
+        List<ArchiveEntry> entries = InterfaceArchive.ReadEntries(a, a.Length);
+
+        Assert.Equal(4, entries.Count);
+        Assert.All(entries.Take(3), e => Assert.Equal(16, e.Offset));
+        Assert.All(entries.Take(3), e => Assert.Equal(10, e.Size));
+        Assert.Equal(new ArchiveEntry(3, 26, 4), entries[3]);
     }
 
     [Fact]
