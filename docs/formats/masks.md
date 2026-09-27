@@ -128,22 +128,37 @@ which is the same shape as the *Hollywood Monsters* seven-page table above, one 
 > fields come out tightly bounded (maxima 19, 28, 9, 9, 255 and 7), read as records all six smear
 > across the full byte range, which is what slicing across a structure looks like.
 
-Two pages are established, by tinting a scene by each page in turn and looking at the result
+Three pages are established, by tinting a scene by each page in turn and looking at the result
 (`RESOURCE.F13`, Mama Dorita's, 31 zone ids). Figures are pooled over the 55 *Runaway 1* scenes
 that carry both a mask and a table:
 
 | Page | Meaning | Evidence |
 |---|---|---|
-| 0 | **Walkable region**, 0 = not walkable | Set on 45% of a scene's ids, ~4 regions per scene. Its value ranks with the zone's mean screen row 76% of the time, i.e. the floor is cut into bands front to back. Tinting lights the ground and nothing else. |
+| 0 | **Walkable region**, 0 = not walkable | Set on 45% of a scene's ids, ~4 regions per scene. Tinting lights the ground and nothing else. It numbers the regions; it does **not** sort them front to back -- see the note below the table. |
 | 1 | **Scene item / hotspot index**, 0 = nothing | Set on 54% of ids, ~10 items per scene, and groups of zone ids collapse onto one item number, which is how one object owns several zones. In F13 it lights exactly the door, the well, the skull on the stick and the exit strip; probing the picture returns item 1 for the exit, 2 for the door, 3 for the well, 5 for the skull. |
-| 2 | *unidentified* -- plausibly the walk-behind occluders | The sparse page: set on only 19% of a scene's ids, ~3 values. |
+| 2 | **Depth plane**, larger = nearer, 0 = furthest | The sparse page: set on only 19% of a scene's ids, ~3 values. An actor takes the value of the zone under its feet, and every pixel with a greater value is drawn over it. In F13 the page marks exactly the totem pole (2), the skull on the stick (2) and the well with its frame and bucket (1) -- the three walk-behind objects -- and nothing else. In G04 it marks the near rock wall at the cave mouth (1) and the foreground rock and bushes (2). |
 | 3 | *unidentified* | Dense (91% of ids), values 1..6, no relation to screen row. |
 | 4 | *unidentified* | The only page using the whole byte range: 142 distinct values, 74% of ids set. In F13 the values repeat with a period of four in the zone id, so it is probably not a small class number like the others. |
 | 5 | *unidentified* -- plausibly the footstep material | Dense, values 0..7, and constant across every zone of a scene in the scenes checked (2 everywhere in F13). That is what the equivalent *Hollywood Monsters* page means, but one scene of dirt is not enough to call it. |
 
-Pages 2, 3, 4 and 5 are named by position rather than by guess on purpose. The earlier
-`DepthPlane` / `MaterialId` / `ScriptAction` labels came from the record-major reading and have
-never been checked against the data.
+#### These pages do not rank with screen row
+
+Rank correlation is the wrong tool for finding the depth page, and it is what kept page 2
+unidentified. Page 2 is not a y-sort: an occluder's plane says which scenery an actor passes
+behind, not how far down the picture it sits, so a pole at the back of the scene and a rock in
+the foreground can share a value. Over the 114 tables the best page scores 59.6%, which is
+noise. Rendering a scene tinted by the page settles it in one look.
+
+The same mistake is why page 0 was described here as ranking with the zone's mean screen row
+76% of the time. That figure counted the ids the page leaves at zero -- the sky and the walls,
+which sit at the top of the picture, so they drag the correlation up for free. Restricted to
+the ids page 0 actually sets, it is **40.3%**, i.e. slightly *inverted*. Any test of a page
+has to exclude the ids the page does not set.
+
+Pages 3, 4 and 5 are named by position rather than by guess on purpose. The earlier
+`DepthPlane` / `MaterialId` / `ScriptAction` labels came from the record-major reading; page 2
+turns out to carry what `DepthPlane` claimed, but it was checked against the data before it was
+named here, and the remaining three still have not been.
 
 The explorer reads this table to allow filtering masks by individual functional layers (`Walk`, `Hotspot`, `Depth`, `Material`, `Occluder`).
 

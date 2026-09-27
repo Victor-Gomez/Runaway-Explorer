@@ -90,6 +90,17 @@ scan's first guess is right for all **438** assets -- 13 of them behind descript
 no entry needing the count walked back and no false positive among the backgrounds, overlays, masks
 or data tables.
 
+The tiling check is not optional, and neither is reading the whole entry to do it. A cheap probe
+that reads only the head of the record table -- say the first 64 KB -- and stops when a record
+stops looking like one gets *Runaway 1* badly wrong in both directions: it calls **147** entries
+sprites that are not, and misses **41** real ones whose record table alone is longer than the
+probe. The false positives are the blank-frame rule biting back. An all zero 14-byte record is a
+valid blank frame, so any stretch of zeroed bytes reads as an endless animation that draws
+nothing; the 43,659-byte scene logic table opens with 23 zeroed 80-byte records and is classified
+as a sprite every time. Exact tiling rejects all of them, with one degenerate case left over:
+an entry of *N* x 14 zeroed bytes does tile, as *N* blank frames, so also require the asset's
+bounding box to be non-empty.
+
 ## Evolution of segment formats
 
 Across Pendulo Studios' releases, the segment header and pixel payload evolved to support higher color depths, alpha transparency, and wider spans:
