@@ -56,3 +56,7 @@ nunit-*.xml
 CLAUDE.md
 AGENTS.md
 /cover
+
+# Python helper scripts under tools/
+__pycache__/
+*.py[cod]

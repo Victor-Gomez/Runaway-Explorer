@@ -289,22 +289,116 @@ block (see [palettes.md](palettes.md)).
 Not found, in any of the three: a keyed cursor atlas after *Runaway 2*. Those games' cursors are
 somewhere else, and nothing here says where. Their fonts are not missing -- see the glyph tables above.
 
-### 2. `Resource.001` — character sprite library
+### 2. `Resource.001` — the character sprite library (*Runaway 1*)
 
-A 108 MB global repository of character motion cycles (e.g. the 2,148-frame walk and gesture cycle for Brian Basco).
+*Runaway 1*'s characters are not in the scene archives and are not in the scene sprite format. They live
+in `Resource.001`, a 108 MB library of motion cycles, as palette-indexed run streams behind a 32-byte
+frame record. A second library in the same format sits in `RESOURCE.000` (below).
 
-- Header: Two 864-byte lookup tables loaded at startup.
-- Offsets cluster in 16 MB memory banks.
-- Format: Packed 8-bit character sprite spans:
-  ```text
-  N × {
-      u16 X
-      u16 Y
-      u16 Count
-      u8  Value[Count]
-  }
-  ```
-  New frames are signaled when `Y` decreases.
+#### Layout
+
+```text
+u32 offset[216]     at 0
+u32 size[216]       at 864          -- 1,728 bytes of table in all
+```
+
+168 slots are live. An entry is **a fixed 3,200-byte frame table** (100 records of 32 bytes, the unused
+tail zeroed) followed by `size` bytes of frame data, so it occupies `3200 + size` and **`size` excludes
+the table**. Read that way the entries tile the file exactly — no gap, no overlap, ending on the last
+byte, 108,761,688. That is the format test. Read without the 3,200 the entries appear to be separated by
+168 identical 3,200-byte gaps, which is the tell.
+
+There are 2,166 frames over the 168 entries, 11 to 20 each, so the file is one animation set for a few
+characters rather than 168 separate sprites — the same shape as the voice shards.
+
+#### Frame record
+
+32 bytes. It is *Hollywood Monsters*' actor sprite descriptor with one extra count:
+
+```text
+u32 dataOffset       -- from the end of the 3,200-byte table; frame 0 is always 0
+u32 opaqueRunCount   -- runs in the body stream
+u32 edgeCountA       -- \ these two sum to the edge stream's run count
+u32 edgeCountB       -- /
+u32 anchorX, anchorY -- the feet, measured from the frame box origin
+u32 width, height    -- the frame box, about 167 × 420
+```
+
+#### Two streams per frame
+
+The **body stream** is `opaqueRunCount` runs of
+
+```text
+u16 x, u16 y, u16 count, u8 index[count]
+```
+
+and each byte is a palette index — see [palettes.md](palettes.md). It ends exactly where the edge stream
+begins.
+
+The **edge stream** fills the rest of the frame, up to the next frame's `dataOffset`, and has a 7-byte
+header:
+
+```text
+u16 x, u16 y, u8 kind, u16 count
+kind == 1  ->  count bytes follow
+kind == 0  ->  none do
+```
+
+Its bytes are **coverage, not colour**: every value in the stream is a multiple of 255/63, a 6-bit alpha
+widened to 8 bits. Rendered, the kind-1 runs are the character's anti-aliased dark outline (the game is
+cel shaded) and the long kind-0 runs are the ground shadow — *Hollywood Monsters*' palette-remap run
+stream, which draws nothing and instead pushes the framebuffer through a darker colour table. Putting the
+edge bytes through the palette instead paints a hard white line around the character, which is the
+quickest way to notice the mistake.
+
+Both streams ending exactly on their boundaries is the per-frame format test.
+
+#### Run coordinates are canvas coordinates
+
+The record's `width`/`height` are the run **extent** and `anchorX`/`anchorY` are the feet measured from
+the frame box origin — but that origin is **not stored**. The run coordinates in both streams are
+positions in a larger sprite canvas, and the box origin is the smallest coordinate the frame's runs use,
+taken over the body and edge streams together. The edge stream always starts further left and higher than
+the body, so it has to be included in that minimum.
+
+To draw: shift every run by `-min`, then place the frame at `pos - anchor`.
+
+Over the whole library — all 2,166 frames of the 168 live entries — `minX + anchorX` is **168** and
+`minY + anchorY` is **434** in every frame, so the character's feet sit on one fixed canvas pixel
+throughout, and the run extent equals `width` × `height` with no exception.
+
+Reading the runs as box-relative draws the sprite 91 px right and 28 px low. It still looks like a
+character standing in the scene, so it does not show up as an obvious rendering fault; it was caught by
+clamping the runs to the declared box, which made most of the character disappear.
+
+#### A second library in `RESOURCE.000`
+
+`RESOURCE.000` slots 11 onward are six 17-slot blocks running to slot 96:
+
+| Phase | Size | Contents |
+|---|---|---|
+| 0 | 512 | the character palette, `u16 colour[256]` RGB565 |
+| 1-14 | ~370 KB - ~1 MB | run-stream frame data |
+| 15 | 7,680 | a frame table, 240 × the same 32-byte record |
+| 16 | 4,864 | a frame table, 152 × the same 32-byte record |
+
+The records have the identical layout to `Resource.001`'s — record 0 of slot 26 is anchor 89,402 over a
+168×418 box — so the two libraries share a format. The palettes are covered in
+[palettes.md](palettes.md).
+
+#### Known unknowns
+
+- **The split of `edgeCountA` / `edgeCountB`.** Only their *sum* is established; it is the edge stream's
+  run count exactly in every frame checked, but it is not the split by run kind. Frame 0 of entry 0 has
+  908 kind-0 and 1,459 kind-1 runs against the record's 288 and 2,079.
+- **Which of the three palettes an entry wants** is not recorded in the file ([palettes.md](palettes.md)).
+- **The darker colour table** the kind-0 shadow runs remap through has not been found in *Runaway 1*.
+- **The scale factor.** The characters are authored at one size and the runtime resamples them; the
+  factor is in the executable, not in any container ([executable.md](executable.md)).
+
+#### Decoders & tests
+
+Not implemented. The explorer lists `Resource.001` but does not decode it.
 
 ### 3. `RESOURCE.003` — dialogue phrase tables
 

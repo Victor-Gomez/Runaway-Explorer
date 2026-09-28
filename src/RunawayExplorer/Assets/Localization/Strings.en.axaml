@@ -77,6 +77,7 @@
     <x:String x:Key="Option_MaskWalk">walk</x:String>
     <x:String x:Key="Option_MaskHotspot">hotspots</x:String>
     <x:String x:Key="Option_MaskDepth">depth</x:String>
+    <x:String x:Key="Option_MaskLight">light</x:String>
     <x:String x:Key="Option_MaskMaterial">sound</x:String>
     <x:String x:Key="Option_MaskOccluder">occluders</x:String>
     <x:String x:Key="ToolTip_MaskLayers">Filter mask layers: walkboxes, hotspots, depth bands, footstep sounds, occluders (Right-click to solo)</x:String>

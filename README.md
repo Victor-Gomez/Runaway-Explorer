@@ -84,11 +84,13 @@ Windows build bundles it via NuGet; on Linux, install it from your distro's pack
 
 ## What is not decoded
 
-- The per-scene data tables in *Runaway*'s scene archives (1536, 43659 and 704 bytes) -- purpose unknown.
-  *Hollywood Monsters*' equivalents are understood: its playable scenes open with a fixed background,
+- The 704-byte per-scene table in *Runaway*'s scene archives -- purpose unknown. Its two larger siblings
+  are understood: 1536 bytes is the six-page zone attribute table and 43659 the walk route table.
+  *Hollywood Monsters*' equivalents are understood too: its playable scenes open with a fixed background,
   palette, region map, lookup pages and metadata block.
-- The localised text bitmaps in `RESOURCE.000` and *Runaway 1*'s `RESOURCE.001` (the character sprite
-  library): shown as hex dumps. Interface art itself decodes in every game -- the fonts, cursor atlases,
+- The localised text bitmaps in `RESOURCE.000`, and *Runaway 1*'s `RESOURCE.001` -- the character sprite
+  library, whose container, frame record and two run streams are now documented
+  ([global-data.md](docs/formats/global-data.md)) but not yet decoded: both are shown as hex dumps. Interface art itself decodes in every game -- the fonts, cursor atlases,
   full-screen and UI rasters and interface animations of *Runaway 1* and *Runaway 2*,
   *Runaway 3*'s fonts, animations and bitmaps, the PNG and JPEG artwork in *The Next BIG Thing*'s and *Yesterday*'s
   `RESOURCE.IFZ`, and *Hollywood Monsters*' menu panel -- as does the tail of *Hollywood Monsters*'

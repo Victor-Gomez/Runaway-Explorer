@@ -471,7 +471,7 @@ public static class VoiceArchive
     /// <summary>One resolved clip: which shard holds it and where.</summary>
     public readonly record struct VoiceClip(int Index, string ShardPath, long Offset, long Size);
 
-    /// <summary>The shard file names, in the order the first-hit-wins rule consults them.</summary>
+    /// <summary>The shard file names, in index order.</summary>
     public static IEnumerable<string> ShardNames() =>
         Enumerable.Range(0, ShardCount).Select(i => $"DATAACA{i}.000");
 
@@ -567,14 +567,36 @@ public static class VoiceArchive
     }
 
     /// <summary>
-    /// Resolves every clip across <paramref name="shardPaths"/> (in order). The first shard that holds a
-    /// clip locally wins; the same index in a later shard is ignored.
+    /// Resolves every clip across <paramref name="shardPaths"/>.
+    /// <para>
+    /// Every shard's table describes every clip. The shard that holds a clip gives an offset local to
+    /// itself; the others repeat a shared placeholder, which is the clip's offset in the whole
+    /// collection and therefore always larger. So <b>the smallest of the seven values is the real
+    /// offset, and the shard it came from is the shard holding the clip</b>. A tie across all seven
+    /// means shard 0, whose local offsets are the placeholder values.
+    /// </para>
+    /// <para>
+    /// Taking the first shard whose value merely fits inside it instead reads 385 of Runaway 1's 5,591
+    /// lines out of the wrong shard: the placeholders are small for early clips, so a big shard's clip
+    /// is answered by a small shard that happens to be longer than the placeholder. Shards 4 and 6 are
+    /// 69 MB and 85 MB, so a wrong hit lands in the middle of an unrelated recording rather than
+    /// failing.
+    /// </para>
+    /// <para>
+    /// Two structural tests reject what is not a clip. A real offset lies past the 48,000-byte table and
+    /// inside its own shard, which throws out the end marker and the smallest leftovers; and within a
+    /// shard the offsets rise with the slot index, because the exporter wrote the clips in order. Past
+    /// the live run sits a block of leftover exporter-buffer values -- the same junk that fills the
+    /// unwritten sixth page of the zone attribute table -- and between them the two tests reject every
+    /// one of Runaway 1's 5,592 dead slots while keeping all 5,591 live ones.
+    /// </para>
     /// </summary>
     public static SortedDictionary<int, VoiceClip> ReadClips(IReadOnlyList<string> shardPaths)
     {
         ArgumentNullException.ThrowIfNull(shardPaths);
         var clips = new SortedDictionary<int, VoiceClip>();
 
+        var tables = new List<(string Path, uint[] Offsets, long FileSize)>();
         foreach (string path in shardPaths)
         {
             using FileStream f = File.OpenRead(path);
@@ -583,26 +605,53 @@ public static class VoiceArchive
 
             var table = new byte[TableSize];
             f.ReadExactly(table);
-            long fileSize = f.Length;
 
-            var local = new List<(int Index, uint Offset)>();
+            var offsets = new uint[SlotCount];
             for (int k = 0; k < SlotCount; k++)
+                offsets[k] = BinaryPrimitives.ReadUInt32LittleEndian(table.AsSpan(k * 4));
+
+            tables.Add((path, offsets, f.Length));
+        }
+
+        var perShard = new List<(int Index, uint Offset)>[tables.Count];
+        var lastAccepted = new long[tables.Count];
+        for (int s = 0; s < tables.Count; s++)
+        {
+            perShard[s] = [];
+            lastAccepted[s] = -1;
+        }
+
+        for (int k = 0; k < SlotCount; k++)
+        {
+            int best = -1;
+            for (int s = 0; s < tables.Count; s++)
             {
-                uint o = BinaryPrimitives.ReadUInt32LittleEndian(table.AsSpan(k * 4));
-                if (o > 0 && o < fileSize)
-                    local.Add((k, o));
+                uint o = tables[s].Offsets[k];
+                if (o > 0 && (best < 0 || o < tables[best].Offsets[k]))
+                    best = s;
             }
 
-            local.Sort((a, b) => a.Offset.CompareTo(b.Offset));
-            for (int i = 0; i < local.Count; i++)
+            if (best < 0)
+                continue;
+
+            uint offset = tables[best].Offsets[k];
+            if (offset < TableSize || offset >= tables[best].FileSize || offset <= lastAccepted[best])
+                continue;
+
+            lastAccepted[best] = offset;
+            perShard[best].Add((k, offset));
+        }
+
+        // A clip runs to the next clip in the same shard, and the last one to the shard's end.
+        for (int s = 0; s < tables.Count; s++)
+        {
+            List<(int Index, uint Offset)> list = perShard[s];
+            for (int i = 0; i < list.Count; i++)
             {
-                (int k, uint off) = local[i];
-                if (clips.ContainsKey(k))
-                    continue;
-                long end = i + 1 < local.Count ? local[i + 1].Offset : fileSize;
-                long size = end - off;
-                if (size > 0)
-                    clips[k] = new VoiceClip(k, path, off, size);
+                (int k, uint off) = list[i];
+                long end = i + 1 < list.Count ? list[i + 1].Offset : tables[s].FileSize;
+                if (end > off)
+                    clips[k] = new VoiceClip(k, tables[s].Path, off, end - off);
             }
         }
 

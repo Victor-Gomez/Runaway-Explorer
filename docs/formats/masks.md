@@ -128,18 +128,19 @@ which is the same shape as the *Hollywood Monsters* seven-page table above, one 
 > fields come out tightly bounded (maxima 19, 28, 9, 9, 255 and 7), read as records all six smear
 > across the full byte range, which is what slicing across a structure looks like.
 
-Three pages are established, by tinting a scene by each page in turn and looking at the result
-(`RESOURCE.F13`, Mama Dorita's, 31 zone ids). Figures are pooled over the 55 *Runaway 1* scenes
-that carry both a mask and a table:
+Five of the six are established, every one of them by rendering a scene flat by the page and
+comparing it against the painting -- see the note below the table on why the statistics found
+none of them. Figures are pooled over the 55 *Runaway 1* scenes that carry both a mask and a
+table, counting only the ids a scene's mask actually paints:
 
 | Page | Meaning | Evidence |
 |---|---|---|
 | 0 | **Walkable region**, 0 = not walkable | Set on 45% of a scene's ids, ~4 regions per scene. Tinting lights the ground and nothing else. It numbers the regions; it does **not** sort them front to back -- see the note below the table. |
 | 1 | **Scene item / hotspot index**, 0 = nothing | Set on 54% of ids, ~10 items per scene, and groups of zone ids collapse onto one item number, which is how one object owns several zones. In F13 it lights exactly the door, the well, the skull on the stick and the exit strip; probing the picture returns item 1 for the exit, 2 for the door, 3 for the well, 5 for the skull. |
 | 2 | **Depth plane**, larger = nearer, 0 = furthest | The sparse page: set on only 19% of a scene's ids, ~3 values. An actor takes the value of the zone under its feet, and every pixel with a greater value is drawn over it. In F13 the page marks exactly the totem pole (2), the skull on the stick (2) and the well with its frame and bucket (1) -- the three walk-behind objects -- and nothing else. In G04 it marks the near rock wall at the cave mouth (1) and the foreground rock and bushes (2). |
-| 3 | *unidentified* | Dense (91% of ids), values 1..6, no relation to screen row. |
-| 4 | *unidentified* | The only page using the whole byte range: 142 distinct values, 74% of ids set. In F13 the values repeat with a period of four in the zone id, so it is probably not a small class number like the others. |
-| 5 | *unidentified* -- plausibly the footstep material | Dense, values 0..7, and constant across every zone of a scene in the scenes checked (2 everywhere in F13). That is what the equivalent *Hollywood Monsters* page means, but one scene of dirt is not enough to call it. |
+| 3 | **Actor brightness class**, 0..6 | Dense (91% of ids) and unrelated to screen row, because it is a lighting *field* rather than an object map. In B02, the darkened hospital room, the whole scene is one value except a single quadrilateral lying exactly on the pool of moonlight the window throws on the floor. In E03 the page is concentric ellipses centred on the floor -- a lamp's falloff quantised into bands. Neither follows the scenery. The *Hollywood Monsters* page indexes signed deltas added to the actor's palette; *Runaway 1* is 16-bit colour, so how the class becomes a brightness is still open. |
+| 4 | **Not a page. Never read it.** | The entry is 1,536 bytes for six pages but only five are written; this slot keeps whatever was in the exporter's buffer -- see the note below the table. |
+| 5 | **Footstep surface material**, 0..7 | Dense (98% of ids) and constant across the whole scene in 40 of 56 scenes, which is what one floor material looks like. Where a scene has two, the boundary is the material's edge in the painting and not an object: in F18 the dirt street is 2 and the wooden boardwalk is 3, and the border traces the front edge of the planks. The per-scene sets group by location -- the desert scenes E02, E05, E07 and E08 all use 2 alone. In *Hollywood Monsters* the same page indexes the scene's resident sound effects, played on the walk cycle's two footfall cels. |
 
 #### These pages do not rank with screen row
 
@@ -155,12 +156,34 @@ which sit at the top of the picture, so they drag the correlation up for free. R
 the ids page 0 actually sets, it is **40.3%**, i.e. slightly *inverted*. Any test of a page
 has to exclude the ids the page does not set.
 
-Pages 3, 4 and 5 are named by position rather than by guess on purpose. The earlier
-`DepthPlane` / `MaterialId` / `ScriptAction` labels came from the record-major reading; page 2
-turns out to carry what `DepthPlane` claimed, but it was checked against the data before it was
-named here, and the remaining three still have not been.
+Page 4 was described here as using the whole byte range and repeating "with a period of four in
+the zone id". The period claim was one scene read by eye and is wrong -- measured over used
+ids it holds in 0 of 56 scenes. The range claim was right but means the opposite of what it
+looked like.
 
-The explorer reads this table to allow filtering masks by individual functional layers (`Walk`, `Hotspot`, `Depth`, `Material`, `Occluder`).
+#### Page 4 is not a page
+
+The other five are zero for every id a scene never paints, and their last nonzero entry stops at
+the scene's highest live id. Page 4 is nonzero on **64%** of the dead ids and runs to entry
+251-255 in all 64 tables, whether the scene uses 1 id or 63. It is a function of no other page
+(4-13% of scenes), correlates with nothing geometric (51.7% against screen row, i.e. noise), is
+never constant, and read as 4-byte little-endian words it holds recognisable 32-bit Windows
+addresses -- `0x0012Fxxx` stack, `0x004xxxxx` image, `0x77Dxxxxx` system DLL -- with 36% of its
+nonzero words falling in those ranges.
+
+So the exporter allocates 1,536 bytes for six pages and writes only five, leaving whatever was
+in the buffer. The contents are per-file rather than random (the only duplicate page 4s across
+the game are the mirrored chapter pairs `F13`/`h13`, `F18`/`h18`, `F26`/`H26`), which just means
+it was written once at export time. The *Hollywood Monsters* page at the same offset is the
+palette recolouring class, which a 16-bit-colour game has no use for, so the slot kept the
+layout and was never filled in.
+
+The earlier `DepthPlane` / `MaterialId` / `ScriptAction` labels came from the record-major
+reading. Page 2 turns out to carry what `DepthPlane` claimed and page 5 roughly what
+`MaterialId` claimed, but both were checked against the data before being named here;
+`ScriptAction` was pointing at the unwritten slot.
+
+The explorer reads this table to allow filtering masks by individual functional layers (`Walk`, `Hotspot`, `Depth`, `Light`, `Material`, `Occluder`). Page 4 is not offered as a layer, because it holds nothing.
 
 ## Palette generation
 

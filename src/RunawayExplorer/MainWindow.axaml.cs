@@ -1829,6 +1829,7 @@ public partial class MainWindow : Window
             MaskTypeWalkToggle.IsChecked = MaskTypeWalkToggle.IsVisible && _activeMaskLayers.HasFlag(MaskLayers.Walk);
             MaskTypeHotspotToggle.IsChecked = MaskTypeHotspotToggle.IsVisible && _activeMaskLayers.HasFlag(MaskLayers.Hotspot);
             MaskTypeDepthToggle.IsChecked = MaskTypeDepthToggle.IsVisible && _activeMaskLayers.HasFlag(MaskLayers.Depth);
+            MaskTypeLightToggle.IsChecked = MaskTypeLightToggle.IsVisible && _activeMaskLayers.HasFlag(MaskLayers.Light);
             MaskTypeMaterialToggle.IsChecked = MaskTypeMaterialToggle.IsVisible && _activeMaskLayers.HasFlag(MaskLayers.Material);
             MaskTypeOccluderToggle.IsChecked = MaskTypeOccluderToggle.IsVisible && _activeMaskLayers.HasFlag(MaskLayers.Occluder);
         }
@@ -1844,6 +1845,7 @@ public partial class MainWindow : Window
         if (MaskTypeWalkToggle.IsVisible && MaskTypeWalkToggle.IsChecked == true) layers |= MaskLayers.Walk;
         if (MaskTypeHotspotToggle.IsVisible && MaskTypeHotspotToggle.IsChecked == true) layers |= MaskLayers.Hotspot;
         if (MaskTypeDepthToggle.IsVisible && MaskTypeDepthToggle.IsChecked == true) layers |= MaskLayers.Depth;
+        if (MaskTypeLightToggle.IsVisible && MaskTypeLightToggle.IsChecked == true) layers |= MaskLayers.Light;
         if (MaskTypeMaterialToggle.IsVisible && MaskTypeMaterialToggle.IsChecked == true) layers |= MaskLayers.Material;
         if (MaskTypeOccluderToggle.IsVisible && MaskTypeOccluderToggle.IsChecked == true) layers |= MaskLayers.Occluder;
         _activeMaskLayers = layers;
@@ -1867,6 +1869,7 @@ public partial class MainWindow : Window
                 MaskTypeWalkToggle.IsChecked = clicked == MaskTypeWalkToggle;
                 MaskTypeHotspotToggle.IsChecked = clicked == MaskTypeHotspotToggle;
                 MaskTypeDepthToggle.IsChecked = clicked == MaskTypeDepthToggle;
+                MaskTypeLightToggle.IsChecked = clicked == MaskTypeLightToggle;
                 MaskTypeMaterialToggle.IsChecked = clicked == MaskTypeMaterialToggle;
                 MaskTypeOccluderToggle.IsChecked = clicked == MaskTypeOccluderToggle;
             }
@@ -1886,6 +1889,7 @@ public partial class MainWindow : Window
             MaskTypeWalkToggle.IsVisible = presence.HasWalk;
             MaskTypeHotspotToggle.IsVisible = presence.HasHotspot;
             MaskTypeDepthToggle.IsVisible = presence.HasDepth;
+            MaskTypeLightToggle.IsVisible = presence.HasLight;
             MaskTypeMaterialToggle.IsVisible = presence.HasMaterial;
         }
         else
@@ -1893,6 +1897,7 @@ public partial class MainWindow : Window
             MaskTypeWalkToggle.IsVisible = true;
             MaskTypeHotspotToggle.IsVisible = false;
             MaskTypeDepthToggle.IsVisible = false;
+            MaskTypeLightToggle.IsVisible = false;
             MaskTypeMaterialToggle.IsVisible = false;
         }
 
@@ -1998,7 +2003,8 @@ public partial class MainWindow : Window
         List<FsNode> occluderNodes = archive.Children.Where(c => c.Kind == EntryKind.Mask && IsOccluderNode(c) && c != excludeNode).ToList();
 
         bool showRle = (excludeNode is null) && layers != MaskLayers.None &&
-            (layers.HasFlag(MaskLayers.Walk) || layers.HasFlag(MaskLayers.Hotspot) || layers.HasFlag(MaskLayers.Depth) || layers.HasFlag(MaskLayers.Material));
+            (layers.HasFlag(MaskLayers.Walk) || layers.HasFlag(MaskLayers.Hotspot) || layers.HasFlag(MaskLayers.Depth)
+                || layers.HasFlag(MaskLayers.Light) || layers.HasFlag(MaskLayers.Material));
         bool showOcc = layers.HasFlag(MaskLayers.Occluder) && occluderNodes.Count > 0;
 
         if (!showRle && !showOcc)

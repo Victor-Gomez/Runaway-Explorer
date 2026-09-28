@@ -17,13 +17,14 @@ public enum MaskLayers
     Depth = 1 << 2,
     Material = 1 << 3,
     Occluder = 1 << 4,
-    All = Walk | Hotspot | Depth | Material | Occluder
+    Light = 1 << 5,
+    All = Walk | Hotspot | Depth | Material | Occluder | Light
 }
 
 /// <summary>
 /// Indicates which attributes are populated in a scene's 1,536-byte attribute table.
 /// </summary>
-public readonly record struct MaskAttributePresence(bool HasWalk, bool HasHotspot, bool HasDepth, bool HasMaterial);
+public readonly record struct MaskAttributePresence(bool HasWalk, bool HasHotspot, bool HasDepth, bool HasLight, bool HasMaterial);
 
 /// <summary>
 /// Decoder for scene-archive RLE mask entries (e.g. entry 1 across 18 scene archives).
@@ -32,6 +33,26 @@ public readonly record struct MaskAttributePresence(bool HasWalk, bool HasHotspo
 /// </summary>
 public static class RleMaskDecoder
 {
+    /// <summary>
+    /// The 1,536-byte attribute table is six pages of 256 bytes, indexed by zone id -- not 256 records of
+    /// six fields. Five pages carry meaning; see <c>docs/formats/masks.md</c> for how each was
+    /// established.
+    /// </summary>
+    private const int PageWalk = 0;
+    private const int PageHotspot = 1;
+    private const int PageDepth = 2;
+    private const int PageLight = 3;
+
+    /// <summary>
+    /// Page 4 is never written. The exporter allocates six pages and fills five, so this one keeps
+    /// whatever was in its buffer -- read as 32-bit words it holds Windows stack and DLL addresses, and
+    /// it is nonzero on 64% of the ids a scene never paints. <em>Hollywood Monsters</em> keeps the
+    /// palette recolouring class here, which a 16-bit-colour game has no use for. Nothing may read it.
+    /// </summary>
+    private const int PageUnwritten = 4;
+
+    private const int PageMaterial = 5;
+
     private static readonly int[] CandidateWidths =
     [
         1024, 1224, 1236, 1280, 1372, 1380, 1444, 1468, 1508, 1560, 1564, 1584, 1600, 1612, 1624, 1648, 1650, 1688, 1740, 1784, 1824, 1828, 1852, 1920, 1924, 1988, 2048, 2592, 2616, 2740, 3288
@@ -225,37 +246,19 @@ public static class RleMaskDecoder
         if (table1536.Length < 1536)
             return null;
 
-        // Check Attribute 1 (offset 256..511): primary object/entity ID.
-        int nonZeroA1 = 0;
-        for (int i = 1; i < 256; i++)
-        {
-            if (table1536[256 + i] != 0)
-                nonZeroA1++;
-        }
-
         var map = new byte[256];
         for (int i = 0; i < 256; i++)
             map[i] = (byte)i;
 
-        if (nonZeroA1 > 0)
+        // Page 1 is the scene item index: several zones of one object share its number.
+        // A scene whose item page is empty simply has no grouping. This used to fall back to page 5,
+        // which is the footstep surface -- that merged every zone standing on the same floor into one
+        // "object", which is not what the page means.
+        for (int i = 1; i < 256; i++)
         {
-            // Use Attribute 1 when populated.
-            for (int i = 1; i < 256; i++)
-            {
-                byte a1 = table1536[256 + i];
-                if (a1 != 0)
-                    map[i] = a1;
-            }
-        }
-        else
-        {
-            // Fallback to Attribute 5 (offset 1280..1535) for scenes where Attribute 1 is 0 (e.g. H10, H23, H29, H42).
-            for (int i = 1; i < 256; i++)
-            {
-                byte a5 = table1536[1280 + i];
-                if (a5 != 0)
-                    map[i] = a5;
-            }
+            byte item = table1536[PageHotspot * 256 + i];
+            if (item != 0)
+                map[i] = item;
         }
 
         return map;
@@ -274,15 +277,16 @@ public static class RleMaskDecoder
         if (table1536.Length < 1536)
             return default;
 
-        bool walk = false, hot = false, depth = false, mat = false;
+        bool walk = false, hot = false, depth = false, light = false, mat = false;
         for (int i = 1; i < 256; i++)
         {
-            if (table1536[0 * 256 + i] != 0) walk = true;
-            if (table1536[1 * 256 + i] != 0) hot = true;
-            if (table1536[3 * 256 + i] != 0) depth = true;
-            if (table1536[5 * 256 + i] != 0) mat = true;
+            if (table1536[PageWalk * 256 + i] != 0) walk = true;
+            if (table1536[PageHotspot * 256 + i] != 0) hot = true;
+            if (table1536[PageDepth * 256 + i] != 0) depth = true;
+            if (table1536[PageLight * 256 + i] != 0) light = true;
+            if (table1536[PageMaterial * 256 + i] != 0) mat = true;
         }
-        return new MaskAttributePresence(walk, hot, depth, mat);
+        return new MaskAttributePresence(walk, hot, depth, light, mat);
     }
 
     /// <summary>
@@ -306,6 +310,7 @@ public static class RleMaskDecoder
         var defaultPalette = GeneratePalette();
         var walkPalette = GenerateWalkboxPalette();
         var depthPalette = GenerateDepthPalette();
+        var lightPalette = GenerateLightPalette();
         var matPalette = GenerateMaterialPalette();
 
         bool hasTable = table1536 is not null && table1536.Length >= 1536;
@@ -325,6 +330,7 @@ public static class RleMaskDecoder
         bool showWalk = layers.HasFlag(MaskLayers.Walk);
         bool showHotspot = layers.HasFlag(MaskLayers.Hotspot);
         bool showDepth = layers.HasFlag(MaskLayers.Depth);
+        bool showLight = layers.HasFlag(MaskLayers.Light);
         bool showMat = layers.HasFlag(MaskLayers.Material);
 
         // Precompute a 256-entry lookup table for the active layer configuration
@@ -349,20 +355,22 @@ public static class RleMaskDecoder
                 continue;
             }
 
-            byte walk = table1536![0 * 256 + id];
-            byte hot = table1536[1 * 256 + id];
-            byte depth = table1536[3 * 256 + id];
-            byte mat = table1536[5 * 256 + id];
+            byte walk = table1536![PageWalk * 256 + id];
+            byte hot = table1536[PageHotspot * 256 + id];
+            byte depth = table1536[PageDepth * 256 + id];
+            byte light = table1536[PageLight * 256 + id];
+            byte mat = table1536[PageMaterial * 256 + id];
 
             bool matchWalk = showWalk && walk != 0;
             bool matchHot = showHotspot && hot != 0;
             bool matchDepth = showDepth && depth != 0;
+            bool matchLight = showLight && light != 0;
             bool matchMat = showMat && mat != 0;
 
-            if (!matchWalk && !matchHot && !matchDepth && !matchMat)
+            if (!matchWalk && !matchHot && !matchDepth && !matchLight && !matchMat)
             {
-                if (walk == 0 && hot == 0 && depth == 0 && mat == 0 &&
-                    showWalk && showHotspot && showDepth && showMat)
+                if (walk == 0 && hot == 0 && depth == 0 && light == 0 && mat == 0 &&
+                    showWalk && showHotspot && showDepth && showLight && showMat)
                 {
                     byte displayId = idMap is not null ? idMap[id] : (byte)id;
                     lut[id] = defaultPalette[displayId];
@@ -390,6 +398,10 @@ public static class RleMaskDecoder
             else if (matchMat)
             {
                 lut[id] = matPalette[Math.Clamp((int)mat, 0, matPalette.Length - 1)];
+            }
+            else if (matchLight)
+            {
+                lut[id] = lightPalette[Math.Clamp((int)light, 0, lightPalette.Length - 1)];
             }
             else
             {
@@ -493,24 +505,44 @@ public static class RleMaskDecoder
     }
 
     /// <summary>
-    /// Generates recognizable acoustic material tones for footstep surface types.
+    /// Distinct tones for the footstep surface classes. Which real surface each class number means is
+    /// not established -- in Runaway 1's F18 the dirt street is 2 and the wooden boardwalk is 3 -- so
+    /// these are told apart, not named.
     /// </summary>
     public static (byte B, byte G, byte R, byte A)[] GenerateMaterialPalette()
     {
         var palette = new (byte B, byte G, byte R, byte A)[256];
         palette[0] = ((byte)0, (byte)0, (byte)0, (byte)0);
 
-        palette[1] = (195, 180, 165, 255); // Stone / Concrete (slate blue-grey)
-        palette[2] = (50, 130, 205, 255);  // Wood (warm amber oak)
-        palette[3] = (55, 110, 150, 255);  // Dirt / Ground (earth ochre)
-        palette[4] = (235, 215, 95, 255);  // Metal (metallic cyan/silver)
-        palette[5] = (245, 140, 35, 255);  // Water (aquatic azure)
+        palette[1] = (195, 180, 165, 255);
+        palette[2] = (50, 130, 205, 255);
+        palette[3] = (55, 110, 150, 255);
+        palette[4] = (235, 215, 95, 255);
+        palette[5] = (245, 140, 35, 255);
 
         for (int i = 6; i < 256; i++)
         {
             float hue = (i * 137.507764f) % 360f;
             (byte r, byte g, byte b) = HsvToRgb(hue, 0.75f, 0.85f);
             palette[i] = (b, g, r, 255);
+        }
+        return palette;
+    }
+
+    /// <summary>
+    /// A dark-to-bright ramp for the actor brightness classes (0..6): the page is a lighting field, so
+    /// showing it as a ramp is what makes a lamp's falloff or a pool of moonlight recognisable.
+    /// </summary>
+    public static (byte B, byte G, byte R, byte A)[] GenerateLightPalette()
+    {
+        var palette = new (byte B, byte G, byte R, byte A)[256];
+        palette[0] = ((byte)0, (byte)0, (byte)0, (byte)0);
+
+        for (int v = 1; v < 256; v++)
+        {
+            float t = Math.Clamp((v - 1) / 6f, 0f, 1f);
+            (byte r, byte g, byte b) = HsvToRgb(45f, 0.55f - 0.45f * t, 0.30f + 0.65f * t);
+            palette[v] = (b, g, r, 255);
         }
         return palette;
     }

@@ -148,21 +148,19 @@ public class RleMaskDecoderTests
     }
 
     [Fact]
-    public void ExtractObjectMapping_FallsBackToAttribute5_WhenAttribute1IsAllZero()
+    public void ExtractObjectMapping_DoesNotGroupByTheFootstepSurface()
     {
-        // Attribute 1 (offset 256..511) all zero; Attribute 5 (offset 1280..1535) has mappings.
+        // Page 1, the scene item index, is empty; page 5 is the footstep surface, and two zones sharing
+        // a floor are not one object. This used to fall back to page 5 and merge them.
         var table = new byte[1536];
-
-        // IDs 7, 8 map to object 5 (like the H10 carpet example).
-        table[1280 + 7] = 5;
-        table[1280 + 8] = 5;
+        table[5 * 256 + 7] = 5;
+        table[5 * 256 + 8] = 5;
 
         byte[]? map = RleMaskDecoder.ExtractObjectMapping(table);
 
         Assert.NotNull(map);
-        Assert.Equal(5, map[7]);
-        Assert.Equal(5, map[8]);
-        Assert.Equal(1, map[1]); // identity for unmapped
+        Assert.Equal(7, map[7]);
+        Assert.Equal(8, map[8]);
     }
 
     [Fact]
@@ -216,43 +214,50 @@ public class RleMaskDecoderTests
     public void DetectAttributePresence_IdentifiesAttributes()
     {
         var table = new byte[1536];
-        // Table 0: walkbox
-        table[0 * 256 + 1] = 5;
-        // Table 1: hotspot
-        table[1 * 256 + 2] = 8;
-        // Table 3: depth
-        table[3 * 256 + 3] = 12;
-        // Table 5: footstep material
-        table[5 * 256 + 4] = 2;
+        table[0 * 256 + 1] = 5;     // page 0: walkable region
+        table[1 * 256 + 2] = 8;     // page 1: scene item
+        table[2 * 256 + 3] = 2;     // page 2: depth plane
+        table[3 * 256 + 5] = 4;     // page 3: actor brightness
+        table[5 * 256 + 4] = 2;     // page 5: footstep surface
 
         var presence = RleMaskDecoder.DetectAttributePresence(table);
         Assert.True(presence.HasWalk);
         Assert.True(presence.HasHotspot);
         Assert.True(presence.HasDepth);
+        Assert.True(presence.HasLight);
         Assert.True(presence.HasMaterial);
+    }
+
+    [Fact]
+    public void DetectAttributePresence_IgnoresTheUnwrittenPage()
+    {
+        // Page 4 is the exporter's leftover buffer, nonzero in every real table and meaning nothing.
+        var table = new byte[1536];
+        for (int i = 0; i < 256; i++)
+            table[4 * 256 + i] = (byte)(i * 7);
+
+        Assert.Equal(default, RleMaskDecoder.DetectAttributePresence(table));
     }
 
     [Fact]
     public void DecodesWithMaskLayers_FiltersLayersAccurately()
     {
-        // 4 pixels:
-        // ID 1: walkbox 1, no hotspot
-        // ID 2: hotspot 2, no walkbox
-        // ID 3: depth 10, no walkbox, no hotspot
-        // ID 4: material 2 (wood), no others
+        // 5 pixels, one per page that carries meaning.
         byte[] data =
         [
             1, 0x01, 0x00,
             2, 0x01, 0x00,
             3, 0x01, 0x00,
             4, 0x01, 0x00,
+            5, 0x01, 0x00,
         ];
 
         var table = new byte[1536];
-        table[0 * 256 + 1] = 1; // ID 1 is Walkbox 1
-        table[1 * 256 + 2] = 2; // ID 2 is Hotspot 2
-        table[3 * 256 + 3] = 10; // ID 3 is Depth 10
-        table[5 * 256 + 4] = 2;  // ID 4 is Material 2
+        table[0 * 256 + 1] = 1;  // id 1 is in walk region 1
+        table[1 * 256 + 2] = 2;  // id 2 is scene item 2
+        table[2 * 256 + 3] = 1;  // id 3 is on depth plane 1
+        table[5 * 256 + 4] = 2;  // id 4 is footstep surface 2
+        table[3 * 256 + 5] = 4;  // id 5 is brightness class 4
 
         // Test 1: MaskLayers.None -> all transparent (alpha = 0)
         var noneImg = RleMaskDecoder.Decode(data, 4, 1, table1536: table, layers: MaskLayers.None);

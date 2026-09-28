@@ -1,8 +1,12 @@
-# Palettes (*Hollywood Monsters*)
+# Palettes (*Hollywood Monsters*, *Runaway 1*)
 
-*Hollywood Monsters* is the only game in the family whose images are palette-indexed. Every background,
-overlay and sprite frame stores one byte per pixel, and that byte is an index into a 256-entry colour
-table assembled from two blocks: one in the scene archive and one shared across the whole game.
+*Hollywood Monsters* is palette-indexed throughout: every background, overlay and sprite frame stores one
+byte per pixel, and that byte is an index into a 256-entry colour table assembled from two blocks, one in
+the scene archive and one shared across the whole game. Most of this page is about those blocks.
+
+*Runaway 1* is not palette-indexed in its scene archives — its backgrounds, overlays and scene sprites
+really are RGB565 — but its **character sprite library** is, and its palettes have a different shape and
+live elsewhere. They are covered in [their own section](#runaway-1s-character-palettes) at the end.
 
 ## Purpose
 
@@ -133,3 +137,32 @@ out = (v << 2) | (v >> 4)
 - [`VirtualFileSystem.ScenePaletteFor`](../../src/RunawayExplorer.Core/FileSystem/VirtualFileSystem.cs) —
   resolves and caches one table per scene archive.
 - Tests: [`HollywoodMonstersTests`](../../tests/RunawayExplorer.Core.Tests/HollywoodMonstersTests.cs)
+
+---
+
+## Runaway 1's character palettes
+
+`Resource.001` and the second sprite library in `RESOURCE.000` store their body-stream bytes as indices
+into a 256-entry table ([global-data.md](global-data.md)). Nothing else in *Runaway 1* is indexed.
+
+**The palettes are `RESOURCE.000` slots 11, 28, 45, 62, 79 and 96.** Each is 512 bytes —
+`u16 colour[256]` in ordinary RGB565, *not* the 6-bit VGA triples above — and they pair up, 11 = 28,
+45 = 62 and 79 = 96, so six slots carry three distinct palettes. Apart from the three font glyph tables
+they are the only entries in the file under 4 KB, which is how they were found.
+
+Two traps are worth naming, because both cost time:
+
+- **`palette.bin` in the game folder is not the palette.** It has 38 non-black entries, and the indices
+  the sprites actually use — 251 for a white shirt, 72 for dark trousers, 212 for hair — are all black in
+  it. Concluding from that dump that the byte cannot be a palette index because the runtime palette holds
+  only 38 entries rules out the right answer.
+- **The 6-bit structural test above does not transfer.** It is what makes *Hollywood Monsters*' blocks
+  findable, and it finds nothing here: there is no 768-byte all-≤63 block anywhere in the executable,
+  `RESOURCE.000` or `Resource.001` that is not simply zero padding. Look for 512-byte entries instead.
+
+### Known unknowns
+
+Which of the three palettes a `Resource.001` entry wants is **not recorded in the file**. Entries 0, 2 and
+60 are right under slot 11, entry 120 under slot 45 and entry 214 under slot 79, established by rendering
+them; nothing in the 32-byte frame record distinguishes them. Like the rest of *Runaway 1*'s per-entry
+constants it is presumably in the executable ([executable.md](executable.md)).

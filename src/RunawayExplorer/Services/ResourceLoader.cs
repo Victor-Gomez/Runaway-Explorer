@@ -391,34 +391,24 @@ public static class ResourceLoader
             return string.Empty;
 
         var sb = new StringBuilder();
+        // Six pages of 256 bytes, indexed by zone id. Page 4 is never written by the exporter -- it
+        // holds whatever was in its buffer -- so it is not shown. See docs/formats/masks.md.
         sb.AppendLine("Active Zones (non-zero attributes in mask lookup):");
-        sb.AppendLine("Mask ID | Walkbox | Hotspot | Facing | Depth Scale | Light Tint | Footstep Material");
-        sb.AppendLine("--------+---------+---------+--------+-------------+------------+------------------");
+        sb.AppendLine("Mask ID | Walk region | Scene item | Depth plane | Brightness | Footstep surface");
+        sb.AppendLine("--------+-------------+------------+-------------+------------+-----------------");
 
         for (int id = 0; id < 256; id++)
         {
             byte walk = data[id];
-            byte hot = data.Length > 256 + id ? data[256 + id] : (byte)0;
-            byte face = data.Length > 512 + id ? data[512 + id] : (byte)0;
-            byte depth = data.Length > 768 + id ? data[768 + id] : (byte)0;
-            byte light = data.Length > 1024 + id ? data[1024 + id] : (byte)0;
+            byte item = data.Length > 256 + id ? data[256 + id] : (byte)0;
+            byte depth = data.Length > 512 + id ? data[512 + id] : (byte)0;
+            byte light = data.Length > 768 + id ? data[768 + id] : (byte)0;
             byte mat = data.Length > 1280 + id ? data[1280 + id] : (byte)0;
 
-            if (walk == 0 && hot == 0 && face == 0 && depth == 0 && light == 0 && mat == 0)
+            if (walk == 0 && item == 0 && depth == 0 && light == 0 && mat == 0)
                 continue;
 
-            string matName = mat switch
-            {
-                0 => "Default",
-                1 => "Concrete/Stone",
-                2 => "Wood",
-                3 => "Dirt/Ground",
-                4 => "Metal",
-                5 => "Water",
-                _ => $"Material {mat}"
-            };
-
-            sb.AppendLine($"  {id,3}   |   {walk,3}   |   {hot,3}   |  {face,3}   |     {depth,3}     |    {light,3}     | {matName}");
+            sb.AppendLine($"  {id,3}   |     {walk,3}     |    {item,3}     |     {depth,3}     |    {light,3}     |       {mat,3}");
         }
 
         return sb.ToString();

@@ -12,6 +12,12 @@ Rather than storing a complete full-screen image for every visual change in a sc
 
 Stored as an array of horizontal spans with screen coordinates and RGB565 pixel payloads.
 
+> **Confirmed against the original loader.** *Runaway 1*'s `Runaway.exe` walks this structure at
+> `0x43cd00`, reading a `u16` run count and then the 6-byte run header exactly as described below. It
+> then converts each pixel **RGB565 to RGB555** in place, `((p >> 1) & 0x7fe0) | (p & 0x1f)`, to suit
+> the game's DirectDraw surface. The stored pixels are RGB565, and keeping them at 565 is more faithful
+> than the original. See [executable.md](executable.md).
+
 #### Layout
 
 ```text

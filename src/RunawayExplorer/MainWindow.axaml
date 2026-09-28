@@ -222,6 +222,9 @@
                                         <ToggleButton x:Name="MaskTypeDepthToggle" Classes="segment"
                                                       Content="{DynamicResource Option_MaskDepth}" Click="MaskTypeToggle_Click"
                                                       PointerPressed="MaskTypeToggle_PointerPressed" Tag="depth"/>
+                                        <ToggleButton x:Name="MaskTypeLightToggle" Classes="segment"
+                                                      Content="{DynamicResource Option_MaskLight}" Click="MaskTypeToggle_Click"
+                                                      PointerPressed="MaskTypeToggle_PointerPressed" Tag="light"/>
                                         <ToggleButton x:Name="MaskTypeMaterialToggle" Classes="segment"
                                                       Content="{DynamicResource Option_MaskMaterial}" Click="MaskTypeToggle_Click"
                                                       PointerPressed="MaskTypeToggle_PointerPressed" Tag="material"/>

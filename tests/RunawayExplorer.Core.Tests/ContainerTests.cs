@@ -266,6 +266,49 @@ public static class SyntheticArchives
         return ms.ToArray();
     }
 
+    /// <summary>
+    /// The seven Runaway 1 voice shards as the game's own exporter wrote them: every shard's table
+    /// describes every clip, giving its own local offset for the clips it holds and the clip's offset in
+    /// the whole collection -- always the larger number -- for the rest.
+    /// </summary>
+    public static byte[][] VoiceShards(IReadOnlyList<(int Index, int Size, int Shard)> clips, int shardCount)
+    {
+        var tables = new byte[shardCount][];
+        var payloads = new MemoryStream[shardCount];
+        var local = new uint[shardCount];
+        for (int s = 0; s < shardCount; s++)
+        {
+            tables[s] = new byte[VoiceArchive.TableSize];
+            payloads[s] = new MemoryStream();
+            local[s] = (uint)VoiceArchive.TableSize;
+        }
+
+        uint global = (uint)VoiceArchive.TableSize;
+        foreach ((int index, int size, int shard) in clips.OrderBy(c => c.Index))
+        {
+            for (int s = 0; s < shardCount; s++)
+            {
+                uint value = s == shard ? local[shard] : global;
+                BinaryPrimitives.WriteUInt32LittleEndian(tables[s].AsSpan(index * 4), value);
+            }
+
+            payloads[shard].Write(new byte[size]);
+            local[shard] += (uint)size;
+            global += (uint)size;
+        }
+
+        var result = new byte[shardCount][];
+        for (int s = 0; s < shardCount; s++)
+        {
+            using var ms = new MemoryStream();
+            ms.Write(tables[s]);
+            payloads[s].Position = 0;
+            payloads[s].CopyTo(ms);
+            result[s] = ms.ToArray();
+        }
+        return result;
+    }
+
     /// <summary>A DATAVC00 keyfile carrying the given (name → real 1024-byte header) pairs, XOR-chained.</summary>
     public static byte[] Keyfile(IReadOnlyList<(string Name, byte[] Header)> videos)
     {
@@ -444,22 +487,85 @@ public class GlobalAndVisemeArchiveTests
 public class VoiceArchiveTests
 {
     [Fact]
-    public void FirstShardWins_AndForeignOffsetsAreSkipped()
+    public void TheSmallestOfTheSevenOffsetsNamesTheShardThatHoldsTheClip()
     {
         string dir = Directory.CreateTempSubdirectory("runaway-voice").FullName;
         try
         {
+            // Clip 7 lives in shard 1 and is the trap: its placeholder in shard 0 (48,010) is a valid
+            // offset inside shard 0, so taking the first shard that merely fits reads shard 0's own
+            // audio instead. Its local offset in shard 1 is smaller, which is what identifies it.
+            byte[][] shards = SyntheticArchives.VoiceShards(
+                [(5, 10, 0), (7, 20, 1), (9, 4000, 1), (11, 30, 0)], shardCount: 2);
+
             string s0 = Path.Combine(dir, "DATAACA0.000");
             string s1 = Path.Combine(dir, "DATAACA1.000");
-            File.WriteAllBytes(s0, SyntheticArchives.VoiceShard(new Dictionary<int, byte[]> { [5] = new byte[10], [7] = new byte[20] }, foreign: [9]));
-            File.WriteAllBytes(s1, SyntheticArchives.VoiceShard(new Dictionary<int, byte[]> { [7] = new byte[99], [9] = new byte[4] }));
+            File.WriteAllBytes(s0, shards[0]);
+            File.WriteAllBytes(s1, shards[1]);
 
             var clips = VoiceArchive.ReadClips([s0, s1]);
 
-            Assert.Equal([5, 7, 9], clips.Keys);
+            Assert.Equal([5, 7, 9, 11], clips.Keys);
             Assert.Equal((s0, 10L), (clips[5].ShardPath, clips[5].Size));
-            Assert.Equal((s0, 20L), (clips[7].ShardPath, clips[7].Size)); // shard 0 wins over shard 1's copy
-            Assert.Equal((s1, 4L), (clips[9].ShardPath, clips[9].Size));  // shard 0's entry was a cross-shard reference
+            Assert.Equal((s1, 20L), (clips[7].ShardPath, clips[7].Size));
+            Assert.Equal((s1, 4000L), (clips[9].ShardPath, clips[9].Size));
+            Assert.Equal((s0, 30L), (clips[11].ShardPath, clips[11].Size));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void RealInstall_ResolvesEveryClipAndTilesEveryShard()
+    {
+        const string dataa = @"F:\Games\Steam\steamapps\common\Runaway A Road Adventure\Dataa";
+        if (!Directory.Exists(dataa)) return;
+
+        List<string> shards = VoiceArchive.ShardNames().Select(n => Path.Combine(dataa, n)).ToList();
+        if (!shards.All(File.Exists)) return;
+
+        var clips = VoiceArchive.ReadClips(shards);
+
+        // The live run is slots 1..5591 with nothing before or after it.
+        Assert.Equal(5591, clips.Count);
+        Assert.Equal(Enumerable.Range(1, 5591), clips.Keys);
+
+        // Every shard is tiled from the end of its table to its last byte, with no gap and no overlap.
+        foreach (IGrouping<string, VoiceArchive.VoiceClip> shard in clips.Values.GroupBy(c => c.ShardPath))
+        {
+            List<VoiceArchive.VoiceClip> ordered = shard.OrderBy(c => c.Offset).ToList();
+            Assert.Equal(VoiceArchive.TableSize, ordered[0].Offset);
+            for (int i = 1; i < ordered.Count; i++)
+                Assert.Equal(ordered[i - 1].Offset + ordered[i - 1].Size, ordered[i].Offset);
+            Assert.Equal(new FileInfo(shard.Key).Length, ordered[^1].Offset + ordered[^1].Size);
+        }
+
+        // All seven hold clips, and the big shards hold the most: reading the first shard whose value
+        // merely fits would have answered 385 of these from the wrong one.
+        Assert.Equal(7, clips.Values.Select(c => c.ShardPath).Distinct().Count());
+        Assert.Equal(1576, clips.Values.Count(c => c.ShardPath.EndsWith("DATAACA6.000", StringComparison.OrdinalIgnoreCase)));
+    }
+
+    [Fact]
+    public void LeftoverValuesPastTheLiveRunAreNotClips()
+    {
+        string dir = Directory.CreateTempSubdirectory("runaway-voice-junk").FullName;
+        try
+        {
+            byte[][] shards = SyntheticArchives.VoiceShards([(1, 100, 0), (2, 100, 0)], shardCount: 1);
+
+            // What the real tables carry past the last clip: the exporter's buffer, read as offsets.
+            // One lands inside the table, one past the live run but backwards, one past the file.
+            BinaryPrimitives.WriteUInt32LittleEndian(shards[0].AsSpan(900 * 4), 16_858);
+            BinaryPrimitives.WriteUInt32LittleEndian(shards[0].AsSpan(901 * 4), (uint)VoiceArchive.TableSize + 50);
+            BinaryPrimitives.WriteUInt32LittleEndian(shards[0].AsSpan(902 * 4), 0x7FFF_FFF0);
+
+            string s0 = Path.Combine(dir, "DATAACA0.000");
+            File.WriteAllBytes(s0, shards[0]);
+
+            Assert.Equal([1, 2], VoiceArchive.ReadClips([s0]).Keys);
         }
         finally
         {

@@ -130,6 +130,12 @@ that table, so a sprite decoded against the scene block alone comes out as a bla
 
 ### 2. Runaway 1 segment (5 bytes, RGB565)
 
+> **Confirmed against the original loader.** *Runaway 1*'s `Runaway.exe` walks this structure at
+> `0x436000`, stepping 14 bytes per frame record and reading the segment header exactly as described
+> above. It then converts each pixel **RGB565 to RGB555** in place, `((p >> 1) & 0x7fe0) | (p & 0x1f)`,
+> to suit the game's DirectDraw surface. The stored pixels are RGB565, and keeping them at 565 is more
+> faithful than the original. See [executable.md](executable.md).
+
 ```text
 u16 X                           -- screen column
 u16 Y                           -- screen row
@@ -188,3 +194,12 @@ Timing is **not stored** anywhere in the asset. Neither records nor segments spe
 - [`SpriteRecord`](../../src/RunawayExplorer.Core/Formats/SpriteDecoder.cs)
 - [`SpriteSegment`](../../src/RunawayExplorer.Core/Formats/SpriteDecoder.cs)
 - Tests: [`SpriteDecoderTests`](../../tests/RunawayExplorer.Core.Tests/ImageDecoderTests.cs), [`HollywoodMonstersTests`](../../tests/RunawayExplorer.Core.Tests/HollywoodMonstersTests.cs), [`YesterdayTests`](../../tests/RunawayExplorer.Core.Tests/YesterdayTests.cs)
+
+---
+
+## The character sprite libraries
+
+*Runaway 1*'s characters are in neither the scene archives nor this format. They live in `Resource.001`
+and in a second library inside `RESOURCE.000`, as palette-indexed run streams behind a separate 32-byte
+frame record. Both are described in
+[global-data.md](global-data.md#2-resource001--the-character-sprite-library-runaway-1).

@@ -77,6 +77,7 @@
     <x:String x:Key="Option_MaskWalk">caminar</x:String>
     <x:String x:Key="Option_MaskHotspot">objetos</x:String>
     <x:String x:Key="Option_MaskDepth">profundidad</x:String>
+    <x:String x:Key="Option_MaskLight">luz</x:String>
     <x:String x:Key="Option_MaskMaterial">sonido</x:String>
     <x:String x:Key="Option_MaskOccluder">oclusiones</x:String>
     <x:String x:Key="ToolTip_MaskLayers">Filtrar capas de máscara: caminar, objetos interactivos, profundidad, sonido de pasos, oclusiones (Clic derecho para aislar)</x:String>

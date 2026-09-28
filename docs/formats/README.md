@@ -23,7 +23,8 @@ Everything below is little-endian unless stated otherwise. Integers (`u8`, `u16`
 | 3-byte / 4-byte RLE, Sparse, PNG | Scene masks — walkboxes, depth planes, occluders, and clickable hotspots | All | [masks.md](masks.md) |
 | Raw PCM, MP3, Bink Video (`.bik`) | Audio & Video — synthesized WAV streams, MP3 audio, and XOR-restored Bink cutscenes | All | [audio-video.md](audio-video.md) |
 | `RESOURCE.000` .. `RESOURCE.005`, `RESOURCE.IFZ` | Global data — fonts (outlined glyph bitmaps plus their glyph tables), the cursor atlas, interface art (raw rasters, BMP, PNG/JPEG by game), interface animations, character sprite library, phrase tables, and lip-sync visemes | All | [global-data.md](global-data.md) |
-| Blocks of 6-bit RGB triples | Palettes — the per-entry colour table and the shared character colours | HM | [palettes.md](palettes.md) |
+| `Runaway.exe` and its siblings | The executable — where the scene logic lives, since it is in no container; plus the loaders as a check on the formats | R1 (HM by comparison) | [executable.md](executable.md) |
+| Blocks of 6-bit RGB triples, and 512-byte RGB565 tables | Palettes — Hollywood Monsters' per-entry colour table and shared character colours, and Runaway 1's character-sprite palettes | HM, R1 | [palettes.md](palettes.md) |
 
 ## Game-by-game summary
 
@@ -47,7 +48,7 @@ The numbering is reused across the games for unrelated things, so it is worth re
 | | `RESOURCE.000` | `001` | `002` | `003` | `004` |
 | --- | --- | --- | --- | --- | --- |
 | **Hollywood Monsters** | The menu panel, UI and font art, the shared 80-colour palette block, and 14 resident sound effects in the tail; 1-byte header, 100 slots | Ambient audio | Cinematic audio | Script text: obfuscated rows + speech cues ([global-data.md](global-data.md)) | Voice bank |
-| **Runaway 1** | Font atlases, the cursor atlases, UI art and 11 interface animations; 20-byte header, 500 slots | Character sprite library | Cinematic audio | Dialogue phrase tables, scene-indexed like Hollywood Monsters' script; not decoded | Lip-sync visemes |
+| **Runaway 1** | Font atlases, the cursor atlases, UI art and 11 interface animations; 20-byte header, 500 slots | Character sprite library | Cinematic audio | Dialogue phrase tables, scene-indexed like Hollywood Monsters' script; decoded, and the loader in the executable agrees ([executable.md](executable.md)) | Lip-sync visemes |
 | **Runaway 2** | The same, with wider glyph records: four fonts, cursor atlases, UI art and 34 animations; 24-byte header, 312 slots | A scene archive, not a global one | Cinematic audio | Dialogue phrase tables | Lip-sync visemes |
 | **Runaway 3** | Interface art as whole BMP files, five fonts and 47 animations; 24-byte header | — (no `001`; `002` is a scene archive) | See left | Dialogue phrase tables | Lip-sync visemes |
 | **The Next BIG Thing** | — (no `000`; the interface is PNG and JPEG in `RESOURCE.IFZ`, beside an undecoded `RESOURCE.TAB`) | — | — | Dialogue phrase tables | Lip-sync visemes |
@@ -58,7 +59,7 @@ documented choices, with the reasoning in [audio-video.md](audio-video.md).
 
 ## Reading these docs
 
-Every document follows a uniform structure:
+Every format document follows a uniform structure:
 
 1. **Purpose** — what the format holds and where it appears in a game installation.
 2. **Layout** — on-disk byte layout in reader order with C-like struct pseudocode.
@@ -66,17 +67,10 @@ Every document follows a uniform structure:
 4. **Known unknowns** — unverified fields or unresolved tables.
 5. **Decoders & tests** — links to the implementing C# classes in `RunawayExplorer.Core` and their xUnit test suites.
 
+[executable.md](executable.md) is the exception: it describes code rather than a container, so it is
+organised by what was established and how, and it ends with the anchors and tools needed to continue it.
+
 ## What the formats share
-
-## Where this comes from
-
-Everything here was derived by reading the shipped files, and every structural claim is checked against a
-full install before it is written down. Two *Hollywood Monsters* sections also cite the ScummVM `hollywood`
-engine, a separate and still unfinished reverse-engineering effort, where it names something the files
-alone cannot reveal — the fixed chunk layout, the meaning of the region-map lookup pages, and the fact
-that character palettes and alternate palettes are bound per scene by the executable. Those claims were
-re-verified against the game's own data wherever the data can speak; where it cannot (the audio sample
-rates), the disagreement is recorded rather than resolved.
 
 Across 15 years of engine evolution (from *Hollywood Monsters* in 1997 to *Yesterday* in 2012), the engine maintained core design principles:
 
@@ -92,3 +86,17 @@ Across 15 years of engine evolution (from *Hollywood Monsters* in 1997 to *Yeste
 The single most expensive pitfall in reverse-engineering this engine was initially reading scene archive headers as a flat list of offsets instead of an offset-half followed by a size-half. Because entry 0 is a full-screen image starting right after the header, interpreting sizes as offsets created hundreds of plausible-looking, horizontally shifted fragments.
 
 If a decoder needs a heuristic or shift table to find where an image starts, look again at the container.
+
+## Where this comes from
+
+Everything here was derived by reading the shipped files, and every structural claim is checked against a
+full install before it is written down. Two *Hollywood Monsters* sections also cite the ScummVM `hollywood`
+engine, a separate and still unfinished reverse-engineering effort, where it names something the files
+alone cannot reveal — the fixed chunk layout, the meaning of the region-map lookup pages, and the fact
+that character palettes and alternate palettes are bound per scene by the executable. Those claims were
+re-verified against the game's own data wherever the data can speak; where it cannot (the audio sample
+rates), the disagreement is recorded rather than resolved.
+
+The *Runaway 1* executable sections come from static analysis with the scripts in
+[`tools/exe/`](../../tools/exe/), which need only `pefile` and `capstone`; [executable.md](executable.md)
+records the addresses so the reading can be repeated.

@@ -157,6 +157,12 @@ Records (Count records × 9 bytes):
 
 In *Hollywood Monsters*, audio tables (`RESOURCE.M*`, `S*`, `001`, `002`, `004`) use an offset table with no size half, terminated by a slot holding the file length. Slot 1 always holds the table's own byte length. A clip's size is the gap to the next slot; runs of repeated offsets denote unused entries and are dropped.
 
+**Runaway 1 uses the same layout, and the same reading holds.** Its thirteen containers (`RESOURCE.M01`-`M06`, `S01`-`S06`, `002`) each have exactly one slot holding the file length, and it is always the last live slot. Slot 0 is empty. Counts are 100 slots for `M*` and `002`, 1000 for `S*`, of which 11 to 79 are used.
+
+Derive the table length by **minimising over the table, not over the file**: guess from the first non-zero offset, re-minimise over the slots that guess covers, and repeat until it stops moving. Minimising over the whole file reads PCM data as offsets and yields counts of 1, 5, 10, 11 or 14.
+
+Repeated offsets in *Runaway 1* are **always consecutive runs** — checked across all thirteen containers with no exception — which supports reading a run as one real entry plus unused padding rather than as one recording shared by several ids. **Which end of a run carries the real id is unresolved**: it depends on whether the exporter records the running offset for every id and advances only on a real one (making the *last* slot of a run the real one) or records only on write (the *first*). `M01` slots 1..11 all hold offset 400, the table end, so the ambiguity covers the first music track itself.
+
 ### 3. Voice archives (`DATAACA<0-6>.000` / shards)
 
 Dialogue voice clips are sharded across multiple large archives. In *Runaway 1*, seven shards (`DATAACA0.000` to `DATAACA6.000`) provide up to 12,000 clip slots.
@@ -171,7 +177,22 @@ Data:
     <voice payloads>
 ```
 
-A clip ID can appear in any shard. If an offset in a shard is greater than or equal to that shard's file size, it indicates the clip resides in another shard. The reader searches shards sequentially until a valid offset is found.
+**Every shard's table describes every clip.** In *Runaway 1* all seven tables cover the same 5,591 clips (slots 1..5591; slot 0 is empty, and slot 5592 is an end marker holding 241,442,681, which is larger than any shard). A shard gives an offset **local to itself** for the clips it holds, and repeats a shared placeholder for the rest.
+
+**Take the smallest of the seven values for a slot.** It is the real offset, and the shard it came from is the shard holding the clip. A seven-way tie means shard 0, whose local offsets *are* the placeholder values.
+
+A clip's size is the gap to the next clip **in the same shard**; the last clip in a shard runs to that shard's end. The clips tile every shard exactly, from byte 48,000 to EOF, with no gap and no overlap — which is what confirms the rule.
+
+> **Correction.** This previously read: "If an offset in a shard is greater than or equal to that shard's file size, it indicates the clip resides in another shard. The reader searches shards sequentially until a valid offset is found." That is unsafe, and a lone shard's table does not say which of the other six to try. All shards carry the *same* placeholder, so whenever that placeholder is smaller than a large shard's file size the sequential search stops on that shard and reads the middle of an unrelated clip. Shards 4 and 6 are 69 MB and 85 MB, so this is not hypothetical. Taking the minimum avoids it.
+
+**Do not** derive the table length the way the `RESOURCE.M*`/`S*` readers do. The placeholders sort below the 48,000-byte table's own end, so the fixed point collapses. The voice table length is fixed.
+
+**Reject slots that fail two structural tests.** A few thousand slots past the end of the live run, beyond the zeros, sits a block of small leftover values — the same exporter-buffer junk that fills page 4 of the zone attribute table (see [masks.md](masks.md)). In *Runaway 1* it starts at slot 6001 and runs 5,591 values in the range 4,021 to 225,624, and read as offsets they become clips pointing into the middle of shard 0's own table. Two tests reject them, and cost nothing on a live slot:
+
+- the winning offset lies **inside the shard**, at or past the 48,000-byte table and before end of file;
+- within a shard, offsets **rise with slot index**, since the exporter wrote clips in slot order.
+
+Stopping at the first slot no shard fills would also work on a full install, but only there: the tests above hold on a partial or synthetic archive too, which is why the reader uses them instead.
 
 ### 4. Video keyfiles (`DATAVC00.<nnn>`)
 
