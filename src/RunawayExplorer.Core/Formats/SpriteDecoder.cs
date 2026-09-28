@@ -48,7 +48,7 @@ internal readonly record struct SpriteSegmentHeader(int X, int Y, int Count, byt
 /// Format 3 of the scene archives: an animated sprite.
 /// Supports Runaway 1 single-entry format, Runaway 2 paired header/data format, and Runaway 3 7-byte segment format.
 /// </summary>
-public sealed class SpriteAsset
+public sealed class SpriteAsset : IAnimationAsset
 {
     public const int RecordSize = 14;
 

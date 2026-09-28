@@ -16,6 +16,7 @@ namespace RunawayExplorer.Core.FileSystem;
 ///   Voice             the DATAACA shards merged, grouped in blocks of 500 clips
 ///   Lip-sync          RESOURCE.004
 ///   Video             Datav/*, headers restored from DATAVC00
+///   Characters        RESOURCE.001, Runaway 1's character sprite library
 ///   Global Data       RESOURCE.000 entries, plus the archives no decoder claims
 /// </code>
 /// Building it means classifying every scene-archive entry, which reads ~900 MB; see <see cref="ScanCache"/>.
@@ -30,6 +31,7 @@ public sealed class VirtualFileSystem
     public const string LipSyncFolder = "Lip-sync";
     public const string VideoFolder = "Video";
     public const string DialogueFolder = "Dialogue";
+    public const string CharactersFolder = "Characters";
     public const string GlobalFolder = "Global Data";
 
     public const int VoiceGroupSize = 500;
@@ -75,6 +77,7 @@ public sealed class VirtualFileSystem
     private readonly object _attributeTableGate = new();
     private readonly Dictionary<string, List<(int Index, IndexedPalette Palette)>> _archivePalettes = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _paletteGate = new();
+    private readonly Dictionary<int, IndexedPalette?> _characterPalettes = [];
     private Dictionary<int, IndexedPalette>? _sharedPalettes;
 
     public VirtualFileSystem(string baseDir, FsNode root, VideoKeyfile? keyfile = null, GameVersion gameVersion = GameVersion.Runaway1)
@@ -114,11 +117,13 @@ public sealed class VirtualFileSystem
         public int Videos { get; set; }
         public int Visemes { get; set; }
         public int Phrases { get; set; }
+        public int CharacterAnimations { get; set; }
         public bool FromCache { get; set; }
 
         public override string ToString() =>
             $"{SceneArchives} scenes: {Backgrounds} backgrounds, {Masks} masks, {Overlays} overlays, {Animations} animations; " +
-            $"{AudioClips} audio clips, {VoiceClips} voice lines, {Videos} videos, {Visemes} lip-sync tracks, {Phrases} dialogue phrases";
+            $"{AudioClips} audio clips, {VoiceClips} voice lines, {Videos} videos, {Visemes} lip-sync tracks, {Phrases} dialogue phrases" +
+            (CharacterAnimations > 0 ? $", {CharacterAnimations} character animations" : "");
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -196,6 +201,8 @@ public sealed class VirtualFileSystem
         video.FriendlyName = SceneCatalog.GetCategoryTitle(VideoFolder, activeLanguage);
         FsNode dialogue = Folder(root, DialogueFolder);
         dialogue.FriendlyName = SceneCatalog.GetCategoryTitle(DialogueFolder, activeLanguage);
+        FsNode characters = Folder(root, CharactersFolder);
+        characters.FriendlyName = SceneCatalog.GetCategoryTitle(CharactersFolder, activeLanguage);
         FsNode global = Folder(root, GlobalFolder);
         global.FriendlyName = SceneCatalog.GetCategoryTitle(GlobalFolder, activeLanguage);
 
@@ -311,6 +318,11 @@ public sealed class VirtualFileSystem
                 Attach(dialogue, dNode);
                 summary.Phrases = dTranscripts.Count;
                 transcripts = dTranscripts;
+            }
+            else if (CharacterSpriteArchive.IsLibraryName(name, gameVersion))
+            {
+                progress?.Invoke($"Reading {name}");
+                summary.CharacterAnimations += Attach(characters, BuildCharacterLibrary(path, activeLanguage)).Children.Count;
             }
             else if (upper == "RESOURCE.000")
             {
@@ -666,6 +678,63 @@ public sealed class VirtualFileSystem
                 ArchivePath = path,
                 Image = image,
             });
+        }
+
+        return node;
+    }
+
+    /// <summary>
+    /// <em>Runaway 1</em>'s character sprite library as one folder of animations.
+    /// <para>
+    /// Nothing is cached and nothing is probed: the container's own tiling decides which slots are live
+    /// (see <see cref="CharacterSpriteArchive"/>), and every live slot is an animation by construction, so
+    /// the scan reads 1,728 bytes of table and stops. The frame count needs the entry's 3,200-byte frame
+    /// table as well, which is 168 small reads and still costs nothing beside a 108 MB classification.
+    /// </para>
+    /// </summary>
+    private static FsNode BuildCharacterLibrary(string path, string language)
+    {
+        var node = new FsNode
+        {
+            NodeType = FsNodeType.Directory,
+            Name = Path.GetFileName(path),
+            ArchivePath = path,
+            Size = new FileInfo(path).Length,
+        };
+
+        using FileStream f = File.OpenRead(path);
+        List<ArchiveEntry> entries = CharacterSpriteArchive.ReadEntries(f);
+        var table = new byte[CharacterSpriteAsset.FrameTableSize];
+
+        foreach (ArchiveEntry e in entries)
+        {
+            f.Position = e.Offset;
+            f.ReadExactly(table);
+            int frames = 0;
+            while (frames < CharacterSpriteAsset.MaxFrames
+                   && table.AsSpan(frames * CharacterSpriteAsset.RecordSize, CharacterSpriteAsset.RecordSize).ContainsAnyExcept((byte)0))
+            {
+                frames++;
+            }
+
+            int width = BinaryPrimitives.ReadInt32LittleEndian(table.AsSpan(24));
+            int height = BinaryPrimitives.ReadInt32LittleEndian(table.AsSpan(28));
+
+            var child = new FsNode
+            {
+                NodeType = FsNodeType.File | FsNodeType.InArchive,
+                Kind = EntryKind.CharacterAnimation,
+                Name = $"e{e.Index:000}",
+                Offset = e.Offset,
+                Size = e.Size,
+                EntryIndex = e.Index,
+                ArchivePath = path,
+                Image = new ImageInfo { Width = width, Height = height, Frames = frames },
+            };
+            child.FriendlyName = SceneCatalog.IsSpanish(language)
+                ? $"animación de personaje, {frames} fotogramas {width}×{height} ({child.Name})"
+                : $"character animation, {frames} frames {width}×{height} ({child.Name})";
+            Attach(node, child);
         }
 
         return node;
@@ -1330,6 +1399,7 @@ public sealed class VirtualFileSystem
         EntryKind.Mask => 2,
         EntryKind.Overlay => 3,
         EntryKind.Animation => 4,
+        EntryKind.CharacterAnimation => 4,
         EntryKind.Music => 5,
         EntryKind.Ambient => 6,
         EntryKind.Cinematic => 7,
@@ -1514,6 +1584,43 @@ public sealed class VirtualFileSystem
         lock (_paletteGate)
             _archivePalettes[path] = blocks;
         return blocks;
+    }
+
+    /// <summary>
+    /// The colour table for one entry of the character sprite library, from <c>RESOURCE.000</c>.
+    /// <para>
+    /// The pairing is not stored in either file; it is the library's own three-block layout, which every
+    /// live entry agrees with -- see <see cref="CharacterSpriteArchive.PaletteSlotFor"/>.
+    /// <see langword="null"/> for any other node, and when the install has no <c>RESOURCE.000</c>.
+    /// </para>
+    /// </summary>
+    public IndexedPalette? CharacterPaletteFor(FsNode node)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        if (node.Kind != EntryKind.CharacterAnimation || node.EntryIndex < 0)
+            return null;
+
+        int slot = CharacterSpriteArchive.PaletteSlotFor(node.EntryIndex);
+        lock (_paletteGate)
+        {
+            if (_characterPalettes.TryGetValue(slot, out IndexedPalette? cached))
+                return cached;
+        }
+
+        IndexedPalette? palette = null;
+        FsNode? entry = Root.Children
+            .FirstOrDefault(c => c.Name == GlobalFolder)?.Children
+            .FirstOrDefault(c => c.Name.Equals("RESOURCE.000", StringComparison.OrdinalIgnoreCase))?.Children
+            .FirstOrDefault(c => c.EntryIndex == slot);
+        if (entry is not null && entry.Size == IndexedPalette.Rgb565BlockBytes)
+        {
+            try { palette = IndexedPalette.TryParseRgb565(ReadBytes(entry)); }
+            catch (IOException) { palette = null; }
+        }
+
+        lock (_paletteGate)
+            _characterPalettes[slot] = palette;
+        return palette;
     }
 
     /// <summary>The <c>RESOURCE.000</c> block that defines exactly <paramref name="colors"/> colours, if there is one.</summary>

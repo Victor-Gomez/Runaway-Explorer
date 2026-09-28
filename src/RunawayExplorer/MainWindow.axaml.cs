@@ -807,7 +807,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task ExportAnimationAsync(SpriteAsset asset, string defaultName)
+    private async Task ExportAnimationAsync(IAnimationAsset asset, string defaultName)
     {
         AnimationExportFormat format = await AnimationExportOverlay.ShowAsync();
         if (format == AnimationExportFormat.Cancel)
@@ -1700,8 +1700,10 @@ public partial class MainWindow : Window
         {
             ImageResource { Positioned: true } i => $"{i.Kind}, {i.Image.Width}×{i.Image.Height} at screen {i.X},{i.Y}",
             ImageResource i => $"{i.Kind}, {i.Image.Width}×{i.Image.Height}",
+            AnimationResource { Asset: CharacterSpriteAsset c } =>
+                $"character animation, {c.FrameCount} frames, bounding box {c.Bounds.Width}×{c.Bounds.Height} at canvas {c.Bounds.X},{c.Bounds.Y}",
             AnimationResource a => $"animation, {a.Asset.FrameCount} frames, bounding box {a.Asset.Bounds.Width}×{a.Asset.Bounds.Height} at screen {a.Asset.Bounds.X},{a.Asset.Bounds.Y}" +
-                                   (a.Asset.DescriptorCount > 0 ? $", {a.Asset.DescriptorCount} descriptor record(s) skipped" : ""),
+                                   (a.Asset is SpriteAsset { DescriptorCount: > 0 } sa ? $", {sa.DescriptorCount} descriptor record(s) skipped" : ""),
             SoundResource s => s.Pcm.Format switch
             {
                 AudioFormat.Mp3 => $"MP3 audio, {VirtualFileSystem.FormatDuration(s.DurationSeconds)}",
@@ -2402,7 +2404,7 @@ public partial class MainWindow : Window
     // Animation viewer
     // ---------------------------------------------------------------------------------------------
 
-    private SpriteAsset? _animAsset;
+    private IAnimationAsset? _animAsset;
     // Decoded frames, cropped to their content, cached on first use.
     private SpriteFrame?[]? _animFrames;
     // One surface the size of the animation's bounding box that every frame is composited onto at
@@ -2444,6 +2446,10 @@ public partial class MainWindow : Window
             AnimScrubSlider.Value = 0;
         }
         finally { _syncingScrub = false; }
+
+        // Only an animation that belongs to a scene has a background to sit on. The character sprite
+        // library and the global archives' widgets have none, so the toggle would do nothing.
+        AnimBackgroundGroup.IsVisible = _selectedNode is not null && SceneBackgroundBitmapFor(_selectedNode, false) is not null;
 
         LayoutAnimationStage();
         ShowAnimationFrame(0);
@@ -2494,7 +2500,8 @@ public partial class MainWindow : Window
             AnimStage.Height = bh;
             Canvas.SetLeft(AnimBoundsRect, 0);
             Canvas.SetTop(AnimBoundsRect, 0);
-            AnimInfoText.Text = $"{_animAsset.FrameCount} frames, bounding box {bw}×{bh} at screen {bx},{by}";
+            string space = _animAsset is CharacterSpriteAsset ? "canvas" : "screen";
+            AnimInfoText.Text = $"{_animAsset.FrameCount} frames, bounding box {bw}×{bh} at {space} {bx},{by}";
         }
         AnimBoundsRect.Width = bw;
         AnimBoundsRect.Height = bh;

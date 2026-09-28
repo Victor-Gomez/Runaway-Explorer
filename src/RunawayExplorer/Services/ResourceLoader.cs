@@ -171,6 +171,16 @@ public static class ResourceLoader
                     return new AnimationResource(asset);
                 }
 
+                case EntryKind.CharacterAnimation:
+                {
+                    byte[] data = vfs.ReadBytes(node);
+                    CharacterSpriteAsset? asset = CharacterSpriteAsset.Parse(data);
+                    if (asset is null)
+                        return new ErrorResource($"'{node.GetPath()}' no longer parses as a character animation.");
+                    asset.Palette = vfs.CharacterPaletteFor(node);
+                    return new AnimationResource(asset);
+                }
+
                 case EntryKind.Music:
                 case EntryKind.Ambient:
                 case EntryKind.Cinematic:

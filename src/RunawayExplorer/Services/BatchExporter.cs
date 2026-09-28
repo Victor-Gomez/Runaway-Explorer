@@ -100,7 +100,7 @@ public static class BatchExporter
             EntryKind.Background when img is not null => $"{node.Name}_{img.Width}x{img.Height}{(img.IsMask ? "_mask" : "")}.png",
             EntryKind.Mask when img is not null => $"{node.Name}_{img.Width}x{img.Height}_mask.png",
             EntryKind.Overlay when img is not null => $"{node.Name}_{img.Width}x{img.Height}_at_{img.X}_{img.Y}.png",
-            EntryKind.Animation => $"{node.Name}.png",
+            EntryKind.Animation or EntryKind.CharacterAnimation => $"{node.Name}.png",
             EntryKind.Font => $"{node.Name}.png",
             EntryKind.Music or EntryKind.Ambient or EntryKind.Cinematic or EntryKind.Voice =>
                 node.Audio?.Format == AudioFormat.Mp3 ? $"{node.Name}.mp3" : $"{node.Name}.wav",
@@ -215,6 +215,14 @@ public static class BatchExporter
                 return BatchExportResult.Exported;
             }
 
+            case EntryKind.CharacterAnimation:
+            {
+                CharacterSpriteAsset asset = CharacterSpriteAsset.Parse(vfs.ReadBytes(file)) ?? throw new InvalidDataException("not a character animation");
+                asset.Palette = vfs.CharacterPaletteFor(file);
+                ExportAnimation(asset, path, options.AnimationFps, options.AnimationFrames);
+                return BatchExportResult.Exported;
+            }
+
             case EntryKind.Music:
             case EntryKind.Ambient:
             case EntryKind.Cinematic:
@@ -291,7 +299,7 @@ public static class BatchExporter
     /// cropped PNG named with its screen position in <c>&lt;stem&gt;_frames/</c> next to it. Empty frames
     /// get no file; the APNG keeps a 1×1 placeholder so numbering stays 1:1.
     /// </summary>
-    public static (int Frames, int FramesWritten) ExportAnimation(SpriteAsset asset, string apngPath, double fps, bool frames = false)
+    public static (int Frames, int FramesWritten) ExportAnimation(IAnimationAsset asset, string apngPath, double fps, bool frames = false)
     {
         ArgumentNullException.ThrowIfNull(asset);
         ApngWriter.Write(asset, apngPath, fps);
@@ -306,7 +314,7 @@ public static class BatchExporter
     }
 
     /// <summary>Exports each frame of the animation as an individual PNG into <paramref name="dir"/>.</summary>
-    public static int ExportImageSequence(SpriteAsset asset, string dir, string prefix = "frame")
+    public static int ExportImageSequence(IAnimationAsset asset, string dir, string prefix = "frame")
     {
         ArgumentNullException.ThrowIfNull(asset);
         Directory.CreateDirectory(dir);

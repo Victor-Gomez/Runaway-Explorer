@@ -280,6 +280,108 @@ public static class AudioArchive
 }
 
 /// <summary>
+/// <em>Runaway 1</em>'s <c>Resource.001</c> -- the character sprite library.
+/// <code>
+/// offset 0     u32 offset[216]      absolute file offsets, unused = 0
+/// offset 864   u32 size[216]        FRAME DATA bytes, excluding the frame table
+/// offset 1728  &lt;entries&gt;
+/// </code>
+/// <para>
+/// The size half is the trap. An entry is a fixed 3,200-byte frame table followed by <c>size</c> bytes
+/// of frame data, and <c>size</c> counts only the data, so an entry occupies <c>3200 + size</c>. Sized
+/// without the table the entries appear to be separated by 168 identical 3,200-byte gaps, which is the
+/// tell. Sized with it they tile the file exactly -- no gap, no overlap, ending on the last byte -- and
+/// that is what identifies the file, so <see cref="ReadEntries"/> returns nothing unless they do.
+/// </para>
+/// <para>
+/// The 168 live slots fall into three blocks of 72, one per costume the character wears, each coloured
+/// by its own table in <c>RESOURCE.000</c>; see <see cref="PaletteSlotFor"/>.
+/// </para>
+/// </summary>
+public static class CharacterSpriteArchive
+{
+    public const int SlotCount = 216;
+
+    /// <summary>The offset half, then the size half; entry 0 begins right after them.</summary>
+    public const int TableEnd = SlotCount * 8;
+
+    /// <summary>The library's own file name, which is the only thing that names it -- nothing inside says so.</summary>
+    public static bool IsLibraryName(string fileName, GameVersion game) =>
+        game == GameVersion.Runaway1 && string.Equals(fileName, "RESOURCE.001", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The <c>RESOURCE.000</c> slot holding the colour table for library entry <paramref name="entryIndex"/>.
+    /// <para>
+    /// Which palette an entry wants is not recorded anywhere in either file, but the partition is not a
+    /// guess: the library's 216 slots are three consecutive blocks of 72, and every one of the 168 live
+    /// entries matches its own block's palette and no other. Scored by the cosine similarity of an
+    /// entry's index histogram against the three candidates, each entry agrees with its block at 0.92 to
+    /// 1.00 and with the other two at 0.03 to 0.06 -- a separation no borderline case comes near, over
+    /// all 168 entries, with no block mixed. The three tables are <c>RESOURCE.000</c> slots 11, 45 and
+    /// 79, in that order (28, 62 and 96 are byte-identical copies of them).
+    /// </para>
+    /// </summary>
+    public static int PaletteSlotFor(int entryIndex) => (entryIndex / (SlotCount / 3)) switch
+    {
+        0 => 11,
+        1 => 45,
+        _ => 79,
+    };
+
+    /// <summary>
+    /// The live entries, each spanning its frame table and its data, or an empty list when
+    /// <paramref name="data"/> is not this container.
+    /// </summary>
+    public static List<ArchiveEntry> ReadEntries(ReadOnlySpan<byte> data, long fileLength)
+    {
+        var entries = new List<ArchiveEntry>();
+        if (data.Length < TableEnd || fileLength <= TableEnd)
+            return entries;
+
+        for (int i = 0; i < SlotCount; i++)
+        {
+            uint offset = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(i * 4));
+            uint size = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(SlotCount * 4 + i * 4));
+            if (size == 0)
+                continue;
+
+            long span = CharacterSpriteAsset.FrameTableSize + (long)size;
+            if (offset < TableEnd || offset + span > fileLength)
+                return [];
+            entries.Add(new ArchiveEntry(i, offset, span));
+        }
+
+        // The tiling is the format test: sorted by offset, the entries must run from the end of the
+        // table to the last byte of the file with nothing between them and nothing left over.
+        entries.Sort((a, b) => a.Offset.CompareTo(b.Offset));
+        long next = TableEnd;
+        foreach (ArchiveEntry e in entries)
+        {
+            if (e.Offset != next)
+                return [];
+            next = e.Offset + e.Size;
+        }
+        if (entries.Count == 0 || next != fileLength)
+            return [];
+
+        entries.Sort((a, b) => a.Index.CompareTo(b.Index));
+        return entries;
+    }
+
+    /// <inheritdoc cref="ReadEntries(ReadOnlySpan{byte}, long)"/>
+    public static List<ArchiveEntry> ReadEntries(Stream archive)
+    {
+        ArgumentNullException.ThrowIfNull(archive);
+        if (archive.Length < TableEnd)
+            return [];
+        archive.Position = 0;
+        var table = new byte[TableEnd];
+        archive.ReadExactly(table);
+        return ReadEntries(table, archive.Length);
+    }
+}
+
+/// <summary>
 /// <c>RESOURCE.000</c> -- global data (fonts, UI atlas, localised bitmaps).
 /// Runaway 1: 20-byte header, 500 slots.
 /// Runaway 2: 24-byte header (table_half_bytes at 20 is 1248), 312 slots.

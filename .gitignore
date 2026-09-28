@@ -60,3 +60,6 @@ AGENTS.md
 # Python helper scripts under tools/
 __pycache__/
 *.py[cod]
+
+# Local reverse-engineering scratch tools, not part of the shipped project
+tools/

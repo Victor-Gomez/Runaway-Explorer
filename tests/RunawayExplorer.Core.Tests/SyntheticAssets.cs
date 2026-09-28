@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using RunawayExplorer.Core.FileSystem;
 using RunawayExplorer.Core.Formats;
 
 namespace RunawayExplorer.Core.Tests;
@@ -335,6 +336,148 @@ public static class SyntheticAssets
         for (int y = 10; y < 40; y++)
             for (int x = 20; x < 50; x++)
                 BinaryPrimitives.WriteUInt16LittleEndian(data.AsSpan((y * w + x) * 2), white);
+        return data;
+    }
+
+    // --- Runaway 1's character sprite library: palette-indexed body runs plus a coverage mask. ---
+
+    /// <summary>
+    /// One frame of a character animation, in canvas coordinates. <paramref name="Body"/> runs carry
+    /// palette indices; <paramref name="Coverage"/> runs carry either full coverage (kind 0, no bytes) or
+    /// per-pixel coverage (kind 1). The builder derives the frame record from these, the way the game's
+    /// exporter did.
+    /// </summary>
+    public sealed record CharacterFrame(
+        IReadOnlyList<(int X, int Y, byte[] Indices)> Body,
+        IReadOnlyList<(int X, int Y, byte[]? Coverage, int Count)> Coverage);
+
+    /// <summary>
+    /// A frame's runs covering the box (<paramref name="x"/>, <paramref name="y"/>,
+    /// <paramref name="w"/>, <paramref name="h"/>): the body fills it solid with one index, and the
+    /// coverage stream covers the same rows plus one extra row of half-covered "shadow" underneath.
+    /// </summary>
+    public static CharacterFrame SolidCharacterFrame(int x, int y, int w, int h, byte index)
+    {
+        var body = new List<(int, int, byte[])>();
+        var cover = new List<(int, int, byte[]?, int)>();
+        for (int row = 0; row < h - 1; row++)
+        {
+            var px = new byte[w];
+            Array.Fill(px, index);
+            body.Add((x, y + row, px));
+            cover.Add((x, y + row, null, w));
+        }
+        // The last row is shadow only: covered, but with no body pixels behind it.
+        var partial = new byte[w];
+        Array.Fill(partial, (byte)128);
+        cover.Add((x, y + h - 1, partial, w));
+        return new CharacterFrame(body, cover);
+    }
+
+    /// <summary>
+    /// One entry of the character sprite library: the fixed 3,200-byte frame table followed by the frame
+    /// data. Returns the entry bytes; <see cref="CharacterLibrary"/> wraps entries in the container.
+    /// </summary>
+    public static byte[] CharacterEntry(IReadOnlyList<CharacterFrame> frames)
+    {
+        var bodies = new List<byte[]>();
+        Span<byte> u16 = stackalloc byte[2];
+        foreach (CharacterFrame f in frames)
+        {
+            using var fs = new MemoryStream();
+            foreach ((int x, int y, byte[] px) in f.Body)
+            {
+                BinaryPrimitives.WriteUInt16LittleEndian(u16, (ushort)x); fs.Write(u16);
+                BinaryPrimitives.WriteUInt16LittleEndian(u16, (ushort)y); fs.Write(u16);
+                BinaryPrimitives.WriteUInt16LittleEndian(u16, (ushort)px.Length); fs.Write(u16);
+                fs.Write(px);
+            }
+            foreach ((int x, int y, byte[]? cov, int count) in f.Coverage)
+            {
+                BinaryPrimitives.WriteUInt16LittleEndian(u16, (ushort)x); fs.Write(u16);
+                BinaryPrimitives.WriteUInt16LittleEndian(u16, (ushort)y); fs.Write(u16);
+                fs.WriteByte(cov is null ? (byte)0 : (byte)1);
+                BinaryPrimitives.WriteUInt16LittleEndian(u16, (ushort)count); fs.Write(u16);
+                if (cov is not null) fs.Write(cov);
+            }
+            bodies.Add(fs.ToArray());
+        }
+
+        var table = new byte[CharacterSpriteAsset.FrameTableSize];
+        int offset = 0;
+        for (int i = 0; i < frames.Count; i++)
+        {
+            CharacterFrame f = frames[i];
+            int minX = int.MaxValue, minY = int.MaxValue, maxX = 0, maxY = 0;
+            foreach ((int x, int y, byte[] px) in f.Body)
+            {
+                minX = Math.Min(minX, x); minY = Math.Min(minY, y);
+                maxX = Math.Max(maxX, x + px.Length); maxY = Math.Max(maxY, y);
+            }
+            foreach ((int x, int y, byte[]? _, int count) in f.Coverage)
+            {
+                minX = Math.Min(minX, x); minY = Math.Min(minY, y);
+                maxX = Math.Max(maxX, x + count); maxY = Math.Max(maxY, y);
+            }
+
+            Span<byte> rec = table.AsSpan(i * CharacterSpriteAsset.RecordSize);
+            BinaryPrimitives.WriteUInt32LittleEndian(rec, (uint)offset);
+            BinaryPrimitives.WriteUInt32LittleEndian(rec[4..], (uint)f.Body.Count);
+            // The split between the two stored counts is unknown; only their sum is, so put it all in A.
+            BinaryPrimitives.WriteUInt32LittleEndian(rec[8..], (uint)f.Coverage.Count);
+            BinaryPrimitives.WriteUInt32LittleEndian(rec[12..], 0);
+            // Anchor: the feet, on the bottom-centre of the extent, so they land on one canvas point.
+            BinaryPrimitives.WriteUInt32LittleEndian(rec[16..], (uint)(CharacterFeetX - minX));
+            BinaryPrimitives.WriteUInt32LittleEndian(rec[20..], (uint)(CharacterFeetY - minY));
+            BinaryPrimitives.WriteUInt32LittleEndian(rec[24..], (uint)(maxX - minX));
+            BinaryPrimitives.WriteUInt32LittleEndian(rec[28..], (uint)(maxY - minY + 1));
+            offset += bodies[i].Length;
+        }
+
+        using var ms = new MemoryStream();
+        ms.Write(table);
+        foreach (byte[] b in bodies)
+            ms.Write(b);
+        return ms.ToArray();
+    }
+
+    /// <summary>The canvas point every synthetic frame puts the character's feet on.</summary>
+    public const int CharacterFeetX = 200;
+
+    /// <inheritdoc cref="CharacterFeetX"/>
+    public const int CharacterFeetY = 400;
+
+    /// <summary>
+    /// A whole <c>Resource.001</c>: the 216-slot offset-then-size table, then the entries. The size half
+    /// counts frame data only, so an entry occupies 3,200 more bytes than its slot says.
+    /// </summary>
+    public static byte[] CharacterLibrary(IReadOnlyDictionary<int, byte[]> entries)
+    {
+        var table = new byte[CharacterSpriteArchive.TableEnd];
+        long offset = CharacterSpriteArchive.TableEnd;
+        using var ms = new MemoryStream();
+        ms.Write(table);
+        foreach (int slot in entries.Keys.Order())
+        {
+            byte[] entry = entries[slot];
+            BinaryPrimitives.WriteUInt32LittleEndian(table.AsSpan(slot * 4), (uint)offset);
+            BinaryPrimitives.WriteUInt32LittleEndian(
+                table.AsSpan(CharacterSpriteArchive.SlotCount * 4 + slot * 4),
+                (uint)(entry.Length - CharacterSpriteAsset.FrameTableSize));
+            ms.Write(entry);
+            offset += entry.Length;
+        }
+        byte[] data = ms.ToArray();
+        table.CopyTo(data, 0);
+        return data;
+    }
+
+    /// <summary>A 512-byte RGB565 colour table, the shape Runaway 1's character palettes have.</summary>
+    public static byte[] Rgb565Palette(int seed = 0)
+    {
+        var data = new byte[IndexedPalette.Rgb565BlockBytes];
+        for (int i = 0; i < 256; i++)
+            BinaryPrimitives.WriteUInt16LittleEndian(data.AsSpan(i * 2), Rgb565((i + seed) & 0xff, (i * 2 + seed) & 0xff, (i * 3 + seed) & 0xff));
         return data;
     }
 }

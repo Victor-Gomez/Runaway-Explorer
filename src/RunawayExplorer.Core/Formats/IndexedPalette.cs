@@ -76,6 +76,34 @@ public sealed class IndexedPalette
         return new IndexedPalette(bgra, count);
     }
 
+    /// <summary>A full table stored as 256 little-endian RGB565 words, which is how <em>Runaway 1</em> stores the character palettes.</summary>
+    public const int Rgb565BlockBytes = Colors * 2;
+
+    /// <summary>
+    /// Builds a palette from a 512-byte block of <c>u16 colour[256]</c> in RGB565.
+    /// <para>
+    /// <em>Runaway 1</em>'s character sprite library is palette-indexed although the rest of the game is
+    /// not, and its tables are not the 6-bit VGA triples above: they are ordinary RGB565, the same pixel
+    /// format the scene art uses, in <c>RESOURCE.000</c> slots 11, 45 and 79. The 6-bit test on
+    /// <see cref="IsPaletteBlock"/> finds nothing in that game, which is why these need their own reader.
+    /// </para>
+    /// <see langword="null"/> when <paramref name="data"/> is not exactly one such block.
+    /// </summary>
+    public static IndexedPalette? TryParseRgb565(ReadOnlySpan<byte> data)
+    {
+        if (data.Length != Rgb565BlockBytes)
+            return null;
+
+        var bgra = new byte[Colors * 4];
+        for (int i = 0; i < Colors; i++)
+        {
+            ushort c = (ushort)(data[i * 2] | (data[i * 2 + 1] << 8));
+            Rgb565.ToBgra(c, bgra, i * 4);
+            bgra[i * 4 + 3] = 255;
+        }
+        return new IndexedPalette(bgra, Colors);
+    }
+
     /// <summary>
     /// A copy of this palette with <paramref name="tail"/>'s colours moved to the top of the table, so a
     /// 176-colour scene block plus an 80-colour shared block fills all 256 slots.

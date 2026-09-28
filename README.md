@@ -23,7 +23,7 @@ headers; the formats were reverse-engineered from the Steam releases and are wri
 
 - **Whole-install browsing.** Supports all six games (*Hollywood Monsters*, *Runaway 1*, *Runaway 2*, *Runaway 3*, *The Next BIG Thing*, and *Yesterday*). Every archive is scanned once and its entries classified by what they
   actually are. The tree is organised by kind: Scenes, Music, Ambient & SFX, Cinematic Audio, Voice,
-  Lip-sync, Video, Dialogue, Global Data. Includes a pre-computed hash-based scan cache covering every scene and global archive of all six
+  Lip-sync, Video, Dialogue, Global Data, and — in *Runaway 1* — Characters. Includes a pre-computed hash-based scan cache covering every scene and global archive of all six
   games, so a first launch on a stock install is near-instant instead of a cold scan of several
   hundred megabytes.
 - **Backgrounds, scene masks and overlays.** Displays full-screen scene backgrounds, positioned overlays
@@ -32,7 +32,9 @@ headers; the formats were reverse-engineered from the Steam releases and are wri
   layer filtering and adjustable opacity.
 - **Sprite animations.** Frame-by-frame playback with scrubbing, stepping, looping, and adjustable
   frame rate, either on the animation's own bounding box or composited over the scene background at
-  authored coordinates.
+  authored coordinates. *Runaway 1*'s characters live in a library of their own, in a different codec
+  entirely — palette-indexed run streams with a separate coverage mask for the anti-aliased rim and the
+  ground shadow — and play in the same viewer.
 - **Sound & Video.** Background music, ambient sound effects, cinematic audio, voice acting clips,
   and Bink cutscenes with restored headers played via LibVLC with dedicated volume controls and
   interactive waveform seeking.
@@ -88,9 +90,9 @@ Windows build bundles it via NuGet; on Linux, install it from your distro's pack
   are understood: 1536 bytes is the six-page zone attribute table and 43659 the walk route table.
   *Hollywood Monsters*' equivalents are understood too: its playable scenes open with a fixed background,
   palette, region map, lookup pages and metadata block.
-- The localised text bitmaps in `RESOURCE.000`, and *Runaway 1*'s `RESOURCE.001` -- the character sprite
-  library, whose container, frame record and two run streams are now documented
-  ([global-data.md](docs/formats/global-data.md)) but not yet decoded: both are shown as hex dumps. Interface art itself decodes in every game -- the fonts, cursor atlases,
+- The localised text bitmaps in `RESOURCE.000`, shown as hex dumps, and the second character sprite
+  library in that same file, whose per-animation data bases have not been found
+  ([global-data.md](docs/formats/global-data.md)). Interface art itself decodes in every game -- the fonts, cursor atlases,
   full-screen and UI rasters and interface animations of *Runaway 1* and *Runaway 2*,
   *Runaway 3*'s fonts, animations and bitmaps, the PNG and JPEG artwork in *The Next BIG Thing*'s and *Yesterday*'s
   `RESOURCE.IFZ`, and *Hollywood Monsters*' menu panel -- as does the tail of *Hollywood Monsters*'

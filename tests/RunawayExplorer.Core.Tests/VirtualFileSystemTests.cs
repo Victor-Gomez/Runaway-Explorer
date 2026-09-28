@@ -19,6 +19,10 @@ public sealed class FakeInstall : IDisposable
     public byte[] Sprite { get; } = SyntheticAssets.Sprite([new Frame([(10, 20, [1, 2])]), new Frame([(11, 21, [3])])]);
     public byte[] VideoHeader { get; } = new byte[1024];
 
+    /// <summary>Two entries of the character sprite library, one in each of the first two palette blocks.</summary>
+    public byte[] CharacterEntry { get; } = SyntheticAssets.CharacterEntry(
+        [SyntheticAssets.SolidCharacterFrame(60, 40, 9, 7, 5), SyntheticAssets.SolidCharacterFrame(61, 40, 9, 7, 6)]);
+
     public FakeInstall()
     {
         string res = Path.Combine(Root, "Resource");
@@ -36,7 +40,14 @@ public sealed class FakeInstall : IDisposable
         System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(cine.AsSpan(2 * 4), 400); // slot 2 aliases slot 1
         File.WriteAllBytes(Path.Combine(res, "RESOURCE.002"), cine);
         File.WriteAllBytes(Path.Combine(res, "RESOURCE.004"), SyntheticArchives.Visemes([new byte[] { 0, 1, 2 }, null, new byte[] { 3 }]));
-        File.WriteAllBytes(Path.Combine(res, "RESOURCE.000"), SyntheticArchives.Global([new byte[10]]));
+        // Slots 11 and 45 are the character palettes; the library below takes its colours from them.
+        var globalSlots = new byte[]?[46];
+        globalSlots[0] = new byte[10];
+        globalSlots[11] = SyntheticAssets.Rgb565Palette();
+        globalSlots[45] = SyntheticAssets.Rgb565Palette(seed: 17);
+        File.WriteAllBytes(Path.Combine(res, "RESOURCE.000"), SyntheticArchives.Global(globalSlots));
+        File.WriteAllBytes(Path.Combine(res, "RESOURCE.001"), SyntheticAssets.CharacterLibrary(
+            new Dictionary<int, byte[]> { [0] = CharacterEntry, [100] = CharacterEntry }));
         File.WriteAllBytes(Path.Combine(res, "RESOURCE.003"), new byte[321]);
 
         File.WriteAllBytes(Path.Combine(dataa, "DATAACA0.000"), SyntheticArchives.VoiceShard(new Dictionary<int, byte[]> { [1] = new byte[2205], [600] = new byte[10] }));
@@ -63,7 +74,8 @@ public class VirtualFileSystemTests
 
         Assert.Equal(
             [VirtualFileSystem.ScenesFolder, VirtualFileSystem.MusicFolder, VirtualFileSystem.AmbientFolder, VirtualFileSystem.CinematicFolder,
-             VirtualFileSystem.VoiceFolder, VirtualFileSystem.LipSyncFolder, VirtualFileSystem.VideoFolder, VirtualFileSystem.GlobalFolder],
+             VirtualFileSystem.VoiceFolder, VirtualFileSystem.LipSyncFolder, VirtualFileSystem.VideoFolder, VirtualFileSystem.CharactersFolder,
+             VirtualFileSystem.GlobalFolder],
             vfs.Root.Children.Select(c => c.Name));
 
         FsNode scenes = vfs.Root.Children[0];

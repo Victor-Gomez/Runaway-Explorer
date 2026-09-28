@@ -48,7 +48,7 @@ The numbering is reused across the games for unrelated things, so it is worth re
 | | `RESOURCE.000` | `001` | `002` | `003` | `004` |
 | --- | --- | --- | --- | --- | --- |
 | **Hollywood Monsters** | The menu panel, UI and font art, the shared 80-colour palette block, and 14 resident sound effects in the tail; 1-byte header, 100 slots | Ambient audio | Cinematic audio | Script text: obfuscated rows + speech cues ([global-data.md](global-data.md)) | Voice bank |
-| **Runaway 1** | Font atlases, the cursor atlases, UI art and 11 interface animations; 20-byte header, 500 slots | Character sprite library | Cinematic audio | Dialogue phrase tables, scene-indexed like Hollywood Monsters' script; decoded, and the loader in the executable agrees ([executable.md](executable.md)) | Lip-sync visemes |
+| **Runaway 1** | Font atlases, the cursor atlases, UI art, 11 interface animations and the three character palettes; 20-byte header, 500 slots | Character sprite library: 168 animations, palette-indexed run streams, decoded ([global-data.md](global-data.md)) | Cinematic audio | Dialogue phrase tables, scene-indexed like Hollywood Monsters' script; decoded, and the loader in the executable agrees ([executable.md](executable.md)) | Lip-sync visemes |
 | **Runaway 2** | The same, with wider glyph records: four fonts, cursor atlases, UI art and 34 animations; 24-byte header, 312 slots | A scene archive, not a global one | Cinematic audio | Dialogue phrase tables | Lip-sync visemes |
 | **Runaway 3** | Interface art as whole BMP files, five fonts and 47 animations; 24-byte header | — (no `001`; `002` is a scene archive) | See left | Dialogue phrase tables | Lip-sync visemes |
 | **The Next BIG Thing** | — (no `000`; the interface is PNG and JPEG in `RESOURCE.IFZ`, beside an undecoded `RESOURCE.TAB`) | — | — | Dialogue phrase tables | Lip-sync visemes |
@@ -97,6 +97,6 @@ that character palettes and alternate palettes are bound per scene by the execut
 re-verified against the game's own data wherever the data can speak; where it cannot (the audio sample
 rates), the disagreement is recorded rather than resolved.
 
-The *Runaway 1* executable sections come from static analysis with the scripts in
-[`tools/exe/`](../../tools/exe/), which need only `pefile` and `capstone`; [executable.md](executable.md)
-records the addresses so the reading can be repeated.
+The *Runaway 1* executable sections come from static analysis of `Runaway.exe` with `pefile` and
+`capstone`; [executable.md](executable.md) records the addresses and the method so the reading can be
+repeated without them.

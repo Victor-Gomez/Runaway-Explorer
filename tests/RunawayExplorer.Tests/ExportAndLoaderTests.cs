@@ -41,6 +41,33 @@ public class ResourceLoaderTests
     }
 
     [Fact]
+    public void CharacterLibraryEntryLoadsAsAnAnimationWithItsBlocksPalette()
+    {
+        (VirtualFileSystem vfs, FakeInstall install, TempFileTracker temp) = Open();
+        using (install)
+        {
+            var settings = new AppSettings();
+            FsNode library = vfs.FindNode(vfs.Root, "\\Characters\\RESOURCE.001")!;
+
+            var first = Assert.IsType<AnimationResource>(ResourceLoader.Load(library.Children[0], vfs, settings, temp));
+            var firstAsset = Assert.IsType<CharacterSpriteAsset>(first.Asset);
+            Assert.Equal(2, firstAsset.FrameCount);
+            Assert.NotNull(firstAsset.Palette);
+            Assert.Null(firstAsset.Verify());
+
+            // Slot 100 is in the library's second block, so it resolves a different palette.
+            var second = Assert.IsType<AnimationResource>(ResourceLoader.Load(library.Children[1], vfs, settings, temp));
+            var secondAsset = Assert.IsType<CharacterSpriteAsset>(second.Asset);
+            Assert.NotNull(secondAsset.Palette);
+            var a = new byte[4];
+            var b = new byte[4];
+            firstAsset.Palette!.ToBgra(1, a, 0);
+            secondAsset.Palette!.ToBgra(1, b, 0);
+            Assert.NotEqual(a, b);
+        }
+    }
+
+    [Fact]
     public void MaskLoadsAsPositionedImageResource()
     {
         (VirtualFileSystem vfs, FakeInstall install, TempFileTracker temp) = Open();
@@ -180,8 +207,9 @@ public class BatchExporterTests
         BatchExportSummary summary = BatchExporter.ExportSubtree(vfs.Root, vfs, outDir, options, seen.Add);
 
         Assert.Equal(0, summary.FailedCount);
-        // Everything but the two data-ish entries (the 1536-byte table, RESOURCE.000's entry, RESOURCE.003, the unknown video).
-        Assert.Equal(4, summary.SkippedCount);
+        // Everything but the data-ish entries: the 1536-byte table, RESOURCE.000's plain entry and its two
+        // character palettes, RESOURCE.003, and the unknown video.
+        Assert.Equal(6, summary.SkippedCount);
         Assert.Equal(seen.Count, summary.ExportedCount + summary.SkippedCount + summary.FailedCount);
         Assert.Equal(seen.Count, seen[^1].Total);
 
@@ -194,6 +222,9 @@ public class BatchExporterTests
         Assert.True(File.Exists(Path.Combine(outDir, "Voice", "00000-00499", "VOICE_00001.wav")));
         Assert.True(File.Exists(Path.Combine(outDir, "Video", "DATAVA01_001.bik")));
         Assert.True(File.Exists(Path.Combine(outDir, "Lip-sync", "RESOURCE.004", "v00000.txt")));
+        Assert.True(File.Exists(Path.Combine(outDir, "Characters", "RESOURCE.001", "e000.png")));
+        Assert.True(File.Exists(Path.Combine(outDir, "Characters", "RESOURCE.001", "e000_frames", "frame_0000_x60_y40.png")));
+        Assert.True(File.Exists(Path.Combine(outDir, "Characters", "RESOURCE.001", "e100.png")));
         Assert.False(File.Exists(Path.Combine(outDir, "Scenes", "RESOURCE.H09", "e01.bin")));
     }
 

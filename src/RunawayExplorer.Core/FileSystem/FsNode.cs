@@ -20,6 +20,12 @@ public enum FsNodeType
 /// What a node holds, decided once at scan time. Runaway's archive entries carry no names and no
 /// extensions, so this -- not a file extension -- is what the viewers, the tree icons, the type filter
 /// and the exporters all key off.
+/// <para>
+/// <b>These values are persisted.</b> <see cref="ScanCache"/> writes the member's ordinal into the
+/// user's cache and into the shipped one, so inserting a member silently renames every kind after it --
+/// a scanned install comes back with its fonts as dialogue and its data entries as music. Add new kinds
+/// at the end, or bump <see cref="ScanCache.FormatVersion"/> and regenerate the shipped cache.
+/// </para>
 /// </summary>
 public enum EntryKind
 {
@@ -37,6 +43,7 @@ public enum EntryKind
 
     /// <summary>A multi-frame sprite animation.</summary>
     Animation,
+
 
     /// <summary>A scene-archive entry that is not an image (the per-scene tables).</summary>
     Data,
@@ -70,6 +77,12 @@ public enum EntryKind
 
     /// <summary>A loose file on disk that no decoder claims: shown as a hex dump.</summary>
     RawFile,
+
+    /// <summary>
+    /// One animation of <em>Runaway 1</em>'s character sprite library (<c>RESOURCE.001</c>): a different
+    /// container and codec from <see cref="Animation"/>, so it loads through a different decoder.
+    /// </summary>
+    CharacterAnimation,
 }
 
 /// <summary>Image-shaped facts gathered at scan time so the tree can label entries without re-decoding.</summary>

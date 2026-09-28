@@ -222,19 +222,17 @@ table of 5 bytes, a small-row stride of `0x29` and a large-row stride of `0x141`
 
 ## 5. Reproducing this, and continuing it
 
-Tools are in [`tools/exe/`](../../tools/exe/) (`pip install pefile capstone`; no disassembler
-needed). Their README has the detail; the method in short:
+This was done with a few throwaway Python scripts over `pefile` and `capstone` — no disassembler
+install needed — which are not part of this repository. The method matters more than the scripts,
+and it is short:
 
 **To read a scene you have not read yet**, find a global that scene alone uses — a current-frame
-or current-animation byte near its code — and cross-reference it:
-
-```bash
-python xref_const.py 0x5d2ef8        # 41 refs, all in RVA 0x03cdbb..0x03f60b
-python disasm_window.py 0x3da20 0x200
-```
-
-The references cluster, and the cluster is the block. Scene archive names annotate themselves in
-the disassembly, so a scene's opening identifies itself within a few instructions.
+or current-animation byte near its code — then scan `.text` for every 4-byte little-endian
+occurrence of that address and look at where the hits fall. They cluster, and the cluster is the
+block: `0x5d2ef8` gives 41 references, all within RVA `0x03cdbb`..`0x03f60b`. Disassemble a couple
+of hundred bytes from the block's start, annotating any operand that points into `.rdata` with the
+NUL-terminated string it finds there. Scene archive names then label themselves, so a scene's
+opening identifies itself within a few instructions.
 
 **Known anchors for Runaway 1:**
 
@@ -243,6 +241,11 @@ the disassembly, so a scene's opening identifies itself within a few instruction
 | `0x43da20` | the intro scene (`RESOURCE.A00`), takes a chapter number |
 | `0x43dd40` | its per-frame update, the cue timeline |
 | `0x43cd80` | its animation driver — animation index `0x5d2ef8`, frame `0x5d2ef1` |
+| `0x450ed0` | `RESOURCE.B02` scene loader (first playable room: hospital) |
+| `0x450580` | B02 actor depth scaling function |
+| `0x434c20` | `placeActor(x, y, facing, flag, region)` |
+| `0x413990` | `fireCue(stage, row, frame)` |
+| `0x44e880` | actor walk dispatcher |
 | `0x436000` | sprite loader / RGB565→555 converter |
 | `0x43cd00` | overlay loader / converter |
 | `0x40bf70` | open archive by name → handle |
@@ -253,13 +256,60 @@ the disassembly, so a scene's opening identifies itself within a few instruction
 `0x32ea0`, `0x40c120`, `0x40dcf0`, `0x40e060` and `0x18dc60` are RVAs from the earlier Frida work
 in the game folder's `_re/README.md`, and still check out.
 
-**Worth reading next**, in descending order of value to a re-implementation: the chapter title
-wipe's timing (not yet located); where a scene starts the player; which of the three
-`RESOURCE.000` palettes a `Resource.001` entry uses; the actor scaling ramp. All four are
-per-scene or per-entry constants of the kind this executable stores as literals in code, so they
-are readable one block at a time.
+---
 
-## 6. Consequences
+## 6. A playable scene's code block: `RESOURCE.B02`
+
+`RESOURCE.B02` (the hospital room in Chapter 1) is the first interactive scene of the game. Its loader
+at `0x450ed0` and entry sequence at `0x44eb00` provide the prototype for all 71 playable scenes.
+
+### Scene dimensions and camera
+- **Dimensions**: width 1520 (`0x5f0`), height 600 (`0x258`), set at `0x45147f` and `0x451488`.
+- **Viewport scroll limit**: `[0x8093f2] = 496` (`0x1f0` = `1520 - 1024`), set at `0x45149a`.
+- **Archive layout**:
+  - Entry 0: 1520×600 RGB565 background (1,824,000 bytes)
+  - Entry 1: 3-byte continuous RLE mask (15,015 bytes = 5,005 runs)
+  - Entry 2: 6-page zone attribute table (1,536 bytes)
+  - Entry 3: walk route table (43,659 bytes)
+  - Entries 4–23: animations, occluders, and overlays
+
+### Player entry pose and placement
+- Entry placement is executed at `0x44eb17` via `placeActor(x=1075, y=534, facing=7, 0, 0xff)`:
+  - `x = 1075` (`0x433`), `y = 534` (`0x216`), facing 7.
+- Character palette: `RESOURCE.000` slot 45 (Costume 2: Brian in red jacket and jeans).
+
+### Actor depth scaling formula
+Every playable scene installs a depth-scaling function pointer into `[0xac5a04]`. For B02, `0x4506b4`
+installs `0x450580`, which implements a **piecewise linear ramp split at `x = 864` (`0x360`)**:
+
+```
+if (x < 864) {
+    height = y * 1.2638888 - 302.06946;
+} else {
+    height = y * 0.44444444 + 188.77777;
+}
+scaleFactor = height / 455.0;
+```
+
+- **Left branch (`x < 864`)**: Hospital room floor.
+  - Slope: `1.2638888` (stored at `0x4514cd` as float `0x3fa1c71c`).
+  - Intercept: `-302.06946` (stored at `0x4514d7` as float `0xc39708e4`).
+  - Corresponds to `horizonY = 239`, `fullY = 599`. At `y = 599`, `height = 455` px (100%). At minimum floor `y = 455`, `height = 273` px (60%).
+- **Right branch (`x >= 864`)**: Corridor / doorway transition.
+  - Slope: `0.44444444` (`4/9`, stored at `0x451501` as float `0x3ee38e39`).
+  - Intercept: `188.77777` (`1700/9`, stored at `0x45150b` as float `0x433cc71c`).
+  - At `y = 599`, `height = 455` px (100%). At doorway threshold `y = 411`, `height = 371.5` px (81.6%).
+- Global normalization factor is `0.0021978023` = `1 / 455.0` (`fmul` at `0x5a46a8`), where 455 is Brian's authored base height.
+
+### Opening sequence and speech cues
+At `0x44eb5c`–`0x44ec1f`, the scene triggers Brian's internal monologue via `fireCue(stage, row, frame)`
+at `0x413990`. In `RESOURCE.003` Stage 202 (Row 0):
+1. Frame 0 (text 500, voice 598): "Se ha dormido, le han debido hacer efecto los tranquilizantes..."
+2. Frame 1 (text 501–505, voice 599): "¡Qué historia! No sé qué pensar..."
+3. Frame 2 (text 506–507, voice 604): "...¿cómo actuar en una situación como ésta?"
+4. Frame 3 (text 508, voice 606): "Sí, creo que debo hacer algo para proteger la vida de Gina..."
+
+## 7. Consequences
 
 - **A faithful re-implementation cannot be data-driven for scene logic.** There is no script to
   interpret. Each scene has to be written, as the ScummVM `hollywood` engine writes them.

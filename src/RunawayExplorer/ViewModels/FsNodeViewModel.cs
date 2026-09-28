@@ -22,6 +22,7 @@ public sealed class FsNodeViewModel : INotifyPropertyChanged
         [EntryKind.Mask] = "ImageTypeIcon",
         [EntryKind.Overlay] = "ImageTypeIcon",
         [EntryKind.Animation] = "AnimationTypeIcon",
+        [EntryKind.CharacterAnimation] = "AnimationTypeIcon",
         [EntryKind.Data] = "DataTypeIcon",
         [EntryKind.Music] = "SoundTypeIcon",
         [EntryKind.Ambient] = "SoundTypeIcon",

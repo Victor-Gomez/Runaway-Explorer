@@ -3,9 +3,9 @@ using System.Buffers.Binary;
 namespace RunawayExplorer.Core.Formats;
 
 /// <summary>
-/// Writes a <see cref="SpriteAsset"/> as one animated PNG, chunk by chunk.
+/// Writes an <see cref="IAnimationAsset"/> as one animated PNG, chunk by chunk.
 /// <para>
-/// The canvas is <see cref="SpriteAsset.Bounds"/> -- the union of the frames' boxes. Each frame is
+/// The canvas is <see cref="IAnimationAsset.Bounds"/> -- the union of the frames' boxes. Each frame is
 /// stored cropped, at its own size, with APNG's native per-frame x/y offset taken straight from the
 /// frame's screen coordinates, so frames of different sizes line up exactly with nothing estimated.
 /// <c>dispose_op = 1</c> clears each frame before the next; <c>blend_op = 0</c> copies. An empty frame
@@ -22,14 +22,14 @@ public static class ApngWriter
 {
     private static readonly byte[] Signature = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
 
-    public static void Write(SpriteAsset asset, string path, double fps)
+    public static void Write(IAnimationAsset asset, string path, double fps)
     {
         ArgumentNullException.ThrowIfNull(asset);
         using FileStream stream = File.Create(path);
         Write(asset, stream, fps);
     }
 
-    public static void Write(SpriteAsset asset, Stream output, double fps)
+    public static void Write(IAnimationAsset asset, Stream output, double fps)
     {
         ArgumentNullException.ThrowIfNull(asset);
         ArgumentNullException.ThrowIfNull(output);

@@ -16,7 +16,7 @@ Contains global textures and localized typography.
 ```text
 0x000: byte[20] Header          -- begins: 03 01 06 01 01 01 ...
 0x014: u32[500] Offsets         -- absolute byte offsets
-0x7F4: u32[500] Sizes           -- byte sizes
+0x7E4: u32[500] Sizes           -- byte sizes
 0xFB4: <entry data>
 ```
 
@@ -318,7 +318,7 @@ characters rather than 168 separate sprites — the same shape as the voice shar
 ```text
 u32 dataOffset       -- from the end of the 3,200-byte table; frame 0 is always 0
 u32 opaqueRunCount   -- runs in the body stream
-u32 edgeCountA       -- \ these two sum to the edge stream's run count
+u32 edgeCountA       -- \ these two sum to the coverage stream's run count
 u32 edgeCountB       -- /
 u32 anchorX, anchorY -- the feet, measured from the frame box origin
 u32 width, height    -- the frame box, about 167 × 420
@@ -332,11 +332,11 @@ The **body stream** is `opaqueRunCount` runs of
 u16 x, u16 y, u16 count, u8 index[count]
 ```
 
-and each byte is a palette index — see [palettes.md](palettes.md). It ends exactly where the edge stream
-begins.
+and each byte is a palette index — see [palettes.md](palettes.md). It ends exactly where the coverage
+stream begins.
 
-The **edge stream** fills the rest of the frame, up to the next frame's `dataOffset`, and has a 7-byte
-header:
+The **coverage stream** fills the rest of the frame, up to the next frame's `dataOffset`, and has a
+7-byte header:
 
 ```text
 u16 x, u16 y, u8 kind, u16 count
@@ -345,11 +345,20 @@ kind == 0  ->  none do
 ```
 
 Its bytes are **coverage, not colour**: every value in the stream is a multiple of 255/63, a 6-bit alpha
-widened to 8 bits. Rendered, the kind-1 runs are the character's anti-aliased dark outline (the game is
-cel shaded) and the long kind-0 runs are the ground shadow — *Hollywood Monsters*' palette-remap run
-stream, which draws nothing and instead pushes the framebuffer through a darker colour table. Putting the
-edge bytes through the palette instead paints a hard white line around the character, which is the
-quickest way to notice the mistake.
+widened to 8 bits. Putting them through the palette instead paints a hard white line around the
+character, which is the quickest way to notice the mistake.
+
+The stream is not an outline. It is the sprite's whole **footprint** — the silhouette together with the
+ground shadow it casts — as an alpha mask over the same canvas the body draws on: `kind == 0` is a run of
+full coverage, `kind == 1` carries the per-pixel coverage of the boundary, where the art is anti-aliased.
+Measured over every frame of the library, no body pixel falls outside it, and the part of the footprint
+the body does not fill is confined to the bottom tenth of the frame — the shadow under the feet.
+
+So the two streams compose: the body gives the colour, the coverage stream gives the alpha. Where a pixel
+is painted its alpha is the coverage byte; where it is covered but unpainted it is shadow, drawn as black
+at `coverage * ShadowAlpha / 255`. That constant is the decoder's choice, not the engine's — the engine
+pushes the framebuffer under the shadow through a darker colour table, and that table is in no
+container.
 
 Both streams ending exactly on their boundaries is the per-frame format test.
 
@@ -358,8 +367,8 @@ Both streams ending exactly on their boundaries is the per-frame format test.
 The record's `width`/`height` are the run **extent** and `anchorX`/`anchorY` are the feet measured from
 the frame box origin — but that origin is **not stored**. The run coordinates in both streams are
 positions in a larger sprite canvas, and the box origin is the smallest coordinate the frame's runs use,
-taken over the body and edge streams together. The edge stream always starts further left and higher than
-the body, so it has to be included in that minimum.
+taken over the body and coverage streams together. The coverage stream always starts further left and
+higher than the body, so it has to be included in that minimum.
 
 To draw: shift every run by `-min`, then place the frame at `pos - anchor`.
 
@@ -370,6 +379,16 @@ throughout, and the run extent equals `width` × `height` with no exception.
 Reading the runs as box-relative draws the sprite 91 px right and 28 px low. It still looks like a
 character standing in the scene, so it does not show up as an obvious rendering fault; it was caught by
 clamping the runs to the declared box, which made most of the character disappear.
+
+#### Which palette an entry wants
+
+The library's 216 slots are **three blocks of 72**, one per palette: slots 0-71 take `RESOURCE.000`
+slot 11, 72-143 take slot 45, 144-215 take slot 79. Nothing in the file says so; the partition was found
+by comparing each entry's histogram of palette indices against the three tables. Own-block cosine
+similarity is 0.92-1.00 and cross-block is 0.03-0.06 for all 168 live entries, with no entry ambiguous
+and no group straddling a block boundary — so the mapping is structural, not a per-entry guess.
+`CharacterSpriteArchive.PaletteSlotFor` is that arithmetic, and a real-install test re-measures the
+margin rather than trusting a recorded answer.
 
 #### A second library in `RESOURCE.000`
 
@@ -386,19 +405,34 @@ The records have the identical layout to `Resource.001`'s — record 0 of slot 2
 168×418 box — so the two libraries share a format. The palettes are covered in
 [palettes.md](palettes.md).
 
+The two tables are not one run of records: each is a sequence of sub-tables whose `dataOffset` restarts
+at 0, six of 40 records in the 240-record table and eight of 19 in the 152-record one. So each sub-table
+is one animation with its own data base, and it is those bases that are missing: neither reading them as
+the 14 data slots in order nor as one slot per sub-table makes the streams walk. This library stays
+documented and undecoded; `Resource.001` covers the same characters and does parse.
+
 #### Known unknowns
 
-- **The split of `edgeCountA` / `edgeCountB`.** Only their *sum* is established; it is the edge stream's
-  run count exactly in every frame checked, but it is not the split by run kind. Frame 0 of entry 0 has
-  908 kind-0 and 1,459 kind-1 runs against the record's 288 and 2,079.
-- **Which of the three palettes an entry wants** is not recorded in the file ([palettes.md](palettes.md)).
-- **The darker colour table** the kind-0 shadow runs remap through has not been found in *Runaway 1*.
+- **The split of `edgeCountA` / `edgeCountB`.** Only their *sum* is established; it is the coverage
+  stream's run count exactly in all 2,166 frames, but it is not the split by run kind. Frame 0 of entry 0
+  has 908 kind-0 and 1,459 kind-1 runs against the record's 288 and 2,079. The decoder needs only the
+  sum, so this costs nothing.
+- **The darker colour table** the shadow is drawn through has not been found in *Runaway 1*; the decoder
+  substitutes a flat `ShadowAlpha` of 128.
+- **The per-animation data bases of the `RESOURCE.000` library** (above).
 - **The scale factor.** The characters are authored at one size and the runtime resamples them; the
   factor is in the executable, not in any container ([executable.md](executable.md)).
 
 #### Decoders & tests
 
-Not implemented. The explorer lists `Resource.001` but does not decode it.
+`CharacterSpriteArchive` reads the table — the exact tiling is the format test — and
+`CharacterSpriteAsset.Parse` walks the frames, returning `null` unless every frame's two streams tile it
+exactly. It implements `IAnimationAsset`, so the animation viewer and `ApngWriter` serve it and the scene
+sprite codec through the same interface. Palettes come from `IndexedPalette.TryParseRgb565`, resolved per
+entry by `VirtualFileSystem.CharacterPaletteFor`; the library is its own `Characters` folder in the tree.
+Tests are in `Runaway1Tests.cs`, synthetic builders in `SyntheticAssets.cs`, and four real-install tests
+re-verify the container, the frames, the palette locations and the block partition against the shipped
+game.
 
 ### 3. `RESOURCE.003` — dialogue phrase tables
 

@@ -15,8 +15,9 @@ public abstract record ResourceContent;
 /// </summary>
 public sealed record ImageResource(DecodedImage Image, int X, int Y, bool Positioned, string Kind) : ResourceContent;
 
-/// <summary>A sprite animation, parsed and ready for frame-by-frame decoding.</summary>
-public sealed record AnimationResource(SpriteAsset Asset) : ResourceContent;
+/// <summary>An animation, parsed and ready for frame-by-frame decoding. Either codec: a scene archive's
+/// sprite or one entry of Runaway 1's character sprite library.</summary>
+public sealed record AnimationResource(IAnimationAsset Asset) : ResourceContent;
 
 /// <summary>Plain monospace text: a hex dump, a viseme track, or an informational message.</summary>
 public sealed record TextResource(string Text) : ResourceContent;

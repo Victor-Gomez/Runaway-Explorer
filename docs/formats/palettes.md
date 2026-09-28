@@ -160,9 +160,11 @@ Two traps are worth naming, because both cost time:
   findable, and it finds nothing here: there is no 768-byte all-≤63 block anywhere in the executable,
   `RESOURCE.000` or `Resource.001` that is not simply zero padding. Look for 512-byte entries instead.
 
-### Known unknowns
+### Which palette an entry wants
 
-Which of the three palettes a `Resource.001` entry wants is **not recorded in the file**. Entries 0, 2 and
-60 are right under slot 11, entry 120 under slot 45 and entry 214 under slot 79, established by rendering
-them; nothing in the 32-byte frame record distinguishes them. Like the rest of *Runaway 1*'s per-entry
-constants it is presumably in the executable ([executable.md](executable.md)).
+Nothing in the 32-byte frame record says, but the library's 216 slots partition into **three blocks of
+72**, one per palette: 0-71 under slot 11, 72-143 under slot 45, 144-215 under slot 79. Comparing every
+live entry's histogram of palette indices against the three tables gives 0.92-1.00 cosine similarity
+within its own block and 0.03-0.06 against the other two, with nothing ambiguous and no group straddling
+a boundary. `CharacterSpriteArchive.PaletteSlotFor` is that arithmetic; see
+[global-data.md](global-data.md) §2.

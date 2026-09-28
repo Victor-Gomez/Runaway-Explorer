@@ -407,6 +407,7 @@ public static class SceneCatalog
             [VirtualFileSystem.LipSyncFolder] = ("Lip-sync", "Sincronización labial"),
             [VirtualFileSystem.VideoFolder] = ("Video", "Vídeos"),
             [VirtualFileSystem.DialogueFolder] = ("Dialogue", "Diálogos"),
+            [VirtualFileSystem.CharactersFolder] = ("Characters", "Personajes"),
             [VirtualFileSystem.GlobalFolder] = ("Global Data", "Datos globales"),
         };
 
